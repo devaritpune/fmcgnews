@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { LocationData } from "@/lib/firestoreLocations";
+import { LocationData } from "../lib/firestoreLocations";
 import {
   collection,
   query,
@@ -13,12 +13,13 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
-// Dynamically import Leaflet Map to bypass Server-Side Rendering (SSR) window errors
-const IndiaMap = dynamic(() => import("@/components/IndiaMap"), {
+// Dynamically import Leaflet Map to bypass SSR window errors
+const IndiaMap = dynamic(() => import("../components/IndiaMap"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[580px] bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center text-emerald-400 font-semibold animate-pulse">
-      📍 Initializing Pan-India Geospatial Intelligence Map...
+    <div className="w-full h-[620px] bg-slate-900/80 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-emerald-400 font-medium animate-pulse gap-3">
+      <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <span>📍 Initializing Pan-India Geospatial Intelligence Engine...</span>
     </div>
   ),
 });
@@ -32,9 +33,11 @@ interface Article {
   date: string;
   source_url?: string;
   key_takeaway?: string;
+  risk_level?: string;
 }
 
 export default function Home() {
+  const [activeViewTab, setActiveViewTab] = useState<"intelligence" | "map">("intelligence");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
   const [selectedCategory, setSelectedCategory] = useState<string>("Spices & Pickles");
   const [articles, setArticles] = useState<Article[]>([]);
@@ -80,29 +83,32 @@ export default function Home() {
   }, [selectedCategory, selectedRegion]);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
-      {/* Header */}
-      <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 mb-8 gap-4">
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans antialiased">
+      {/* Top Navbar / Header */}
+      <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800/80 pb-6 mb-8 gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white flex items-center gap-2">
-            🌶️ FMCGDesk Market Intelligence
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Executive News Bulletin & Geospatial Trade Intelligence
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🌶️</span>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+              FMCGDesk <span className="text-emerald-400 font-light">Market Intelligence</span>
+            </h1>
+          </div>
+          <p className="text-slate-400 text-xs mt-1 font-mono tracking-wide">
+            Past 7 Days Executive News Bulletin • Spices & Pickles Category
           </p>
         </div>
 
-        {/* Region Filter */}
-        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-2 rounded-xl">
+        {/* Global Controls: Region Selector */}
+        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-2 rounded-xl shadow-lg">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-2">
             Region:
           </span>
           <select
             value={selectedRegion}
             onChange={(e) => setSelectedRegion(e.target.value)}
-            className="bg-slate-950 text-slate-200 text-xs font-bold border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500"
+            className="bg-slate-950 text-emerald-400 font-bold text-xs border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
           >
-            <option value="All">All Regions (Pan-India)</option>
+            <option value="All">IN All Regions (Pan-India)</option>
             <option value="North">North India</option>
             <option value="South">South India</option>
             <option value="East">East India</option>
@@ -113,111 +119,183 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto space-y-10">
-        {/* Category Selector Tabs */}
-        <div className="flex gap-3 border-b border-slate-800 pb-4">
-          <button
-            onClick={() => setSelectedCategory("Spices & Pickles")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-              selectedCategory === "Spices & Pickles"
-                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20"
-                : "bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
-            }`}
-          >
-            🌶️ Spices & Pickles (Live)
-          </button>
-          <button
-            disabled
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900/50 text-slate-600 border border-slate-800/50 cursor-not-allowed flex items-center gap-2"
-          >
-            🥛 Dairy & Beverages <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
-          </button>
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Category Tabs & Module Navigation */}
+        <div className="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-4 gap-4">
+          {/* Category Selection */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedCategory("Spices & Pickles")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                selectedCategory === "Spices & Pickles"
+                  ? "bg-emerald-950 border border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-950/50"
+                  : "bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+              }`}
+            >
+              🌶️ Spices & Pickles <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">Live</span>
+            </button>
+            <button
+              disabled
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-2"
+            >
+              🥛 Dairy & Beverages <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+            </button>
+          </div>
+
+          {/* Primary Navigation Tabs */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setActiveViewTab("intelligence")}
+              className={`px-5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                activeViewTab === "intelligence"
+                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              📊 Market Intelligence
+            </button>
+            <button
+              onClick={() => setActiveViewTab("map")}
+              className={`px-5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                activeViewTab === "map"
+                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              🗺️ India Geospatial Map
+            </button>
+          </div>
         </div>
 
-        {/* Interactive Pan-India Geospatial Map */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              🗺️ Interactive Pan-India Geospatial Map
-            </h2>
-            <span className="text-xs font-mono bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1 rounded-full">
-              37 Key Hubs Seeded
-            </span>
-          </div>
+        {/* TAB 1: EXECUTIVE MARKET INTELLIGENCE VIEW */}
+        {activeViewTab === "intelligence" && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* AI Executive Synthesis Hero Card */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-          <IndiaMap onSelectLocation={(loc) => setSelectedLocation(loc)} />
-        </section>
-
-        {/* Executive News Intelligence Grid */}
-        <section className="space-y-4 pt-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              📰 Executive Market Briefs
-            </h2>
-            <span className="text-xs font-medium text-slate-400">
-              Showing {articles.length} Updates
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 h-48 animate-pulse"
-                />
-              ))}
-            </div>
-          ) : articles.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
-              No news bulletins found for this filter selection.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {articles.map((article) => (
-                <div
-                  key={article.id}
-                  className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 space-y-3 transition flex flex-col justify-between shadow-xl"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="bg-emerald-950 text-emerald-400 border border-emerald-800/50 px-2.5 py-0.5 rounded-md font-semibold">
-                        {article.region}
-                      </span>
-                      <span className="text-slate-500 font-mono text-[11px]">
-                        {article.date}
-                      </span>
-                    </div>
-
-                    <h3 className="text-base font-bold text-white leading-snug line-clamp-2 pt-1">
-                      {article.title}
-                    </h3>
-
-                    <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">
-                      {article.summary}
-                    </p>
-                  </div>
-
-                  {article.key_takeaway && (
-                    <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-[11px] text-slate-300 font-medium">
-                      💡 <strong className="text-emerald-400">Takeaway:</strong>{" "}
-                      {article.key_takeaway}
-                    </div>
-                  )}
+              <div className="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-4 mb-4 gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">
+                    ✨ AI Market Insights
+                  </h2>
+                  <span className="text-slate-500 text-xs">| Synthesis of 8 Active Articles (Past 7 Days)</span>
                 </div>
-              ))}
+                <span className="text-xs font-semibold bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1 rounded-full">
+                  Market Outlook: Bullish
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 space-y-2">
+                <p className="text-xs md:text-sm text-slate-200 leading-relaxed">
+                  <strong className="text-emerald-400 font-semibold">Executive Summary:</strong> US has emerged as the top buyer for Indian spice exports amid steady demand for cardamom and pepper. Concurrently, domestic pickle sales are experiencing double-digit growth driven by quick-commerce and probiotic clean-label trends, despite raw turmeric cost pressures.
+                </p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2 pt-1">
+                <div className="flex items-center gap-2 text-amber-400 font-medium">
+                  <span>⚠️ Operational Watchout:</span>
+                  <span className="text-slate-300">Turmeric & Chilli raw material spot price volatility affecting SME pickle packaging margins.</span>
+                </div>
+                <span className="font-mono text-[11px] text-slate-500">
+                  Top Active States: National, Kerala, Maharashtra, Punjab
+                </span>
+              </div>
             </div>
-          )}
-        </section>
+
+            {/* Articles Grid Header */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                📰 Executive Market Bulletins
+              </h3>
+              <span className="text-xs font-mono text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
+                {articles.length} Updates Found
+              </span>
+            </div>
+
+            {/* News Cards */}
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 h-52 animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : articles.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-16 text-center text-slate-400">
+                No active bulletins found for the selected region filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {articles.map((article) => (
+                  <div
+                    key={article.id}
+                    className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 space-y-4 transition-all hover:translate-y-[-2px] flex flex-col justify-between shadow-xl"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="bg-slate-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded-md font-semibold font-mono">
+                          📍 {article.region}
+                        </span>
+                        <span className="text-slate-500 font-mono text-[11px]">
+                          {article.date}
+                        </span>
+                      </div>
+
+                      <h4 className="text-base font-bold text-white leading-snug hover:text-emerald-400 transition cursor-pointer">
+                        {article.title}
+                      </h4>
+
+                      <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">
+                        {article.summary}
+                      </p>
+                    </div>
+
+                    {article.key_takeaway && (
+                      <div className="bg-slate-950 border border-slate-800/80 p-3 rounded-xl text-[11px] text-slate-300 font-medium">
+                        💡 <strong className="text-emerald-400">Takeaway:</strong>{" "}
+                        {article.key_takeaway}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: INTERACTIVE GEOSPATIAL MAP VIEW */}
+        {activeViewTab === "map" && (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  🗺️ Pan-India Geospatial Trade Intelligence
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Click any state hub marker to review brand dominance, culinary trends, and export status.
+                </p>
+              </div>
+              <span className="text-xs font-mono bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded-xl font-semibold">
+                37 Active Hubs Seeded
+              </span>
+            </div>
+
+            <IndiaMap onSelectLocation={(loc) => setSelectedLocation(loc)} />
+          </div>
+        )}
       </div>
 
-      {/* Location Detail Modal */}
+      {/* Global Location Insights Modal (Accessible from both Tabs) */}
       {selectedLocation && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-2xl w-full space-y-5 relative shadow-2xl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-2xl w-full space-y-5 relative shadow-2xl animate-scaleUp">
             <button
               onClick={() => setSelectedLocation(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center transition"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer"
             >
               ✕
             </button>
@@ -233,7 +311,7 @@ export default function Home() {
 
             <div className="space-y-4">
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
                   Dominant Market Brands
                 </h4>
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -249,7 +327,7 @@ export default function Home() {
               </div>
 
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
                   Consumer & Culinary Focus
                 </h4>
                 <p className="text-sm text-slate-300 mt-1.5 bg-slate-950 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
