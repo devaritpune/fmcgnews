@@ -1,22 +1,20 @@
-import * as admin from "firebase-admin";
+import { getApps, initializeApp, cert } from "firebase-admin/app";
 
-if (!admin.apps.length) {
-  // Use environment variables if available, otherwise fallback to local file if present
-  let serviceAccount;
+if (!getApps().length) {
+  let serviceAccount: any = undefined;
+
   try {
+    // Dynamic require wrapped in try-catch so it won't break on CI/CD
     serviceAccount = require("../serviceAccountKey.json");
   } catch (e) {
-    // Falls back gracefully on GitHub Actions build server
     serviceAccount = undefined;
   }
 
   if (serviceAccount) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+    initializeApp({
+      credential: cert(serviceAccount),
     });
   } else {
-    admin.initializeApp();
+    initializeApp();
   }
 }
-
-export { admin };
