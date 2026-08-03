@@ -1,12 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import {
   fetchLiveNews,
   generateGeminiTrendAnalysis,
   NewsArticle,
   TrendAnalysis,
 } from "../lib/newsService";
+import { LocationData } from "@/lib/firestoreLocations";
+
+// Dynamically import Leaflet Map to bypass Server-Side Rendering (SSR) window errors
+const IndiaMap = dynamic(() => import("@/components/IndiaMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[550px] bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-center text-orange-400 font-semibold animate-pulse">
+      📍 Initializing Pan-India Geospatial Map...
+    </div>
+  ),
+});
 
 const INDIAN_STATES = [
   "All",
@@ -25,6 +37,7 @@ export default function FMCGDeskDashboard() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [trendAnalysis, setTrendAnalysis] = useState<TrendAnalysis | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
 
   useEffect(() => {
     async function loadNews() {
@@ -38,9 +51,9 @@ export default function FMCGDeskDashboard() {
   }, [activeCategory, selectedState]);
 
   return (
-    <main className="p-8 max-w-7xl mx-auto min-h-screen text-slate-100 font-sans">
+    <main className="p-8 max-w-7xl mx-auto min-h-screen text-slate-100 font-sans space-y-8">
       {/* Header */}
-      <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-6">
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <span className="text-3xl">🌶️</span>
@@ -73,7 +86,7 @@ export default function FMCGDeskDashboard() {
       </header>
 
       {/* Category Navigation */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3">
         <button
           onClick={() => setActiveCategory("spices_pickles")}
           className="px-5 py-2.5 rounded-lg font-semibold text-sm bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 shadow-lg shadow-emerald-500/5"
@@ -92,9 +105,24 @@ export default function FMCGDeskDashboard() {
         </button>
       </div>
 
+      {/* Geospatial Map Section */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2">
+            🗺️ Interactive Pan-India Geospatial Map
+          </h2>
+          <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-medium">
+            37 Locations Seeded
+          </span>
+        </div>
+
+        {/* The Interactive Leaflet Map Component */}
+        <IndiaMap onSelectLocation={(loc) => setSelectedLocation(loc)} />
+      </section>
+
       {/* Executive Briefing Tile: "AI Market Insights" */}
       {trendAnalysis && !loading && (
-        <section className="mb-8 p-6 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 border border-emerald-500/30 rounded-2xl shadow-xl relative overflow-hidden">
+        <section className="p-6 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 border border-emerald-500/30 rounded-2xl shadow-xl relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-3 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
@@ -209,6 +237,69 @@ export default function FMCGDeskDashboard() {
           <p className="text-slate-500 text-sm">
             Select "All Regions" to view nationwide market updates.
           </p>
+        </div>
+      )}
+
+      {/* Location Detail Modal */}
+      {selectedLocation && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-2xl w-full space-y-4 relative shadow-2xl">
+            <button
+              onClick={() => setSelectedLocation(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="border-b border-slate-800 pb-3">
+              <span className="text-xs font-mono uppercase bg-orange-950 text-orange-400 px-2 py-0.5 rounded border border-orange-800/50">
+                {selectedLocation.region} Region
+              </span>
+              <h3 className="text-2xl font-black text-white mt-2">
+                {selectedLocation.capital}, {selectedLocation.state}
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-xs font-bold uppercase text-slate-400">Dominant Brands</h4>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedLocation.dominant_brands?.map((brand) => (
+                    <span
+                      key={brand}
+                      className="bg-slate-800 text-orange-300 border border-slate-700 text-xs px-2.5 py-1 rounded font-semibold"
+                    >
+                      {brand}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold uppercase text-slate-400">
+                  Consumer & Culinary Focus
+                </h4>
+                <p className="text-sm text-slate-300 mt-1 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  {selectedLocation.demographics_focus}
+                </p>
+              </div>
+
+              {selectedLocation.export_hub && (
+                <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-800/50 p-2.5 rounded-lg text-emerald-400 text-xs font-medium">
+                  🌐 Key International Export Hub for Spices & Processed Pickles
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setSelectedLocation(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 px-4 rounded transition"
+              >
+                Close Market Brief
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
