@@ -11,7 +11,7 @@ import {
   orderBy,
   limit,
 } from "firebase/firestore";
-import { db } from "@/lib/firebaseClient";
+import { db } from "../lib/firebase";
 
 // Dynamically import Leaflet Map to bypass Server-Side Rendering (SSR) window errors
 const IndiaMap = dynamic(() => import("@/components/IndiaMap"), {
