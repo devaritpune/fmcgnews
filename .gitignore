@@ -1,0 +1,7 @@
+node_modules/ 
+.next/ 
+.env.local 
+echo serviceAccountKey.json >> .gitignore
+echo *Firebase* >> .gitignore
+serviceAccountKey.json 
+*.json 
