@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "FMCGDesk | Spices & CPG Market Intelligence",
-  description: "Real-time FMCG & Spices Regional News & Intelligence Dashboard",
+  title: "FMCGDesk Market Intelligence",
+  description: "Executive News Bulletin & Geospatial Trade Intelligence",
 };
 
 export default function RootLayout({

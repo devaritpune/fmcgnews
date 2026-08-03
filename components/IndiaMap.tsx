@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { LocationData, getAllLocations } from "@/lib/firestoreLocations";
+import { LocationData, getAllLocations } from "../lib/firestoreLocations";
 
-// Custom Circular Marker Styles
+// Custom Circular Marker Styles (Orange default, Emerald Green when selected)
 const createCustomIcon = (isSelected: boolean) =>
   L.divIcon({
     className: "custom-marker-icon",
@@ -35,8 +35,10 @@ export default function IndiaMap({ onSelectLocation }: IndiaMapProps) {
   const [locations, setLocations] = useState<LocationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     async function loadLocations() {
       try {
         const data = await getAllLocations();
@@ -50,7 +52,8 @@ export default function IndiaMap({ onSelectLocation }: IndiaMapProps) {
     loadLocations();
   }, []);
 
-  if (loading) {
+  // Prevent SSR Window/DOM access errors before hydration
+  if (!isMounted || loading) {
     return (
       <div className="w-full h-[580px] bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center text-emerald-400 font-semibold animate-pulse">
         📍 Initializing Pan-India Geospatial Intelligence Map...
