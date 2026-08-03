@@ -1,14 +1,22 @@
 import * as admin from "firebase-admin";
-import serviceAccount from "../serviceAccountKey.json";
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: serviceAccount.project_id,
-      clientEmail: serviceAccount.client_email,
-      privateKey: serviceAccount.private_key,
-    }),
-  });
+  // Use environment variables if available, otherwise fallback to local file if present
+  let serviceAccount;
+  try {
+    serviceAccount = require("../serviceAccountKey.json");
+  } catch (e) {
+    // Falls back gracefully on GitHub Actions build server
+    serviceAccount = undefined;
+  }
+
+  if (serviceAccount) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } else {
+    admin.initializeApp();
+  }
 }
 
-export const adminDb = admin.firestore();
+export { admin };
