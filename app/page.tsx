@@ -111,7 +111,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-slate-400 text-xs mt-1.5 font-mono tracking-wide">
-            Multi-Category Executive Bulletin, Regional Trends & Geospatial FMCG Insights
+            Multi-Category Executive Bulletins, Regional Trends & Consumer Insights
           </p>
         </div>
 
@@ -225,7 +225,7 @@ export default function Home() {
                   <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">
                     ✨ AI MARKET INSIGHTS
                   </h2>
-                  <span className="text-slate-500 text-xs">| Synthesis of Active FMCG Trade Data</span>
+                  <span className="text-slate-500 text-xs">| Synthesis of Active FMCG Market Intelligence</span>
                 </div>
                 <span className="text-xs font-semibold bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1 rounded-full">
                   Market Outlook: Bullish
