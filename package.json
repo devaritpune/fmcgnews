@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
+    "@google/generative-ai": "^0.24.1",
     "@types/leaflet": "^1.9.22",
     "dotenv": "^17.4.2",
     "firebase": "^12.17.0",

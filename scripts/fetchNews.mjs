@@ -1,14 +1,28 @@
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Firebase Admin SDK using Environment Secrets
+// Verify required environment variables
+const requiredEnvVars = [
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_CLIENT_EMAIL',
+  'FIREBASE_PRIVATE_KEY',
+  'GEMINI_API_KEY',
+];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`❌ Missing required secret: ${envVar}`);
+    process.exit(1);
+  }
+}
+
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // Replaces escaped newlines in private key
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     }),
   });
 }
@@ -20,7 +34,7 @@ async function runDailyIngestion() {
   console.log("🚀 Starting daily FMCG news ingestion...");
 
   const category = "Spices & Pickles";
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `Act as an FMCG Market Intelligence Analyst.
   Generate 2 daily executive market bulletin updates for the Indian FMCG category "${category}" as of today.
@@ -38,7 +52,11 @@ async function runDailyIngestion() {
 
   try {
     const result = await model.generateContent(prompt);
-    const responseText = result.response.text().replace(/```json|```/g, '').trim();
+    let responseText = result.response.text().trim();
+    
+    // Clean up potential markdown wrapper formatting
+    responseText = responseText.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+
     const articles = JSON.parse(responseText);
 
     for (const article of articles) {
