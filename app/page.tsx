@@ -99,17 +99,19 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans antialiased">
-      {/* Navbar Header with Restored Title */}
+      {/* Universal FMCG Desk Executive Header */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800/80 pb-6 mb-8 gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <span className="text-3xl">🌶️</span>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-xl shadow-lg shadow-emerald-950/50">
+              🌐
+            </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
               FMCG <span className="text-emerald-400">News Desk</span>
             </h1>
           </div>
-          <p className="text-slate-400 text-xs mt-1 font-mono tracking-wide">
-            Executive Bulletin & Geospatial Trade Intelligence
+          <p className="text-slate-400 text-xs mt-1.5 font-mono tracking-wide">
+            Multi-Category Executive Intelligence & Geospatial Trade Platform
           </p>
         </div>
 
@@ -149,24 +151,46 @@ export default function Home() {
       </header>
 
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Module Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-4 gap-4">
-          <div className="flex items-center gap-2">
+        {/* Module Navigation & Multi-Category Selector Tabs */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800/80 pb-4 gap-4">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
             <button
               onClick={() => setSelectedCategory("Spices & Pickles")}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-950 border border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-950/50 flex items-center gap-2"
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                selectedCategory === "Spices & Pickles"
+                  ? "bg-emerald-950 border border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-950/50"
+                  : "bg-slate-900 text-slate-400 border border-slate-800"
+              }`}
             >
               🌶️ Spices & Pickles <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">Live</span>
             </button>
             <button
               disabled
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-2"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
             >
-              🥛 Dairy & Beverages <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+              🛢️ Edible Oils <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+            </button>
+            <button
+              disabled
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
+            >
+              🥛 Dairy Products <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+            </button>
+            <button
+              disabled
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
+            >
+              🍪 Biscuits & Bakery <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+            </button>
+            <button
+              disabled
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
+            >
+              🧼 Personal Care <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
             </button>
           </div>
 
-          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 self-start lg:self-auto">
             <button
               onClick={() => setActiveViewTab("intelligence")}
               className={`px-5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
@@ -201,7 +225,7 @@ export default function Home() {
                   <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">
                     ✨ AI MARKET INSIGHTS
                   </h2>
-                  <span className="text-slate-500 text-xs">| Synthesis of Active Spices & Pickles Trade Data</span>
+                  <span className="text-slate-500 text-xs">| Synthesis of Active FMCG Trade Data</span>
                 </div>
                 <span className="text-xs font-semibold bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1 rounded-full">
                   Market Outlook: Bullish
@@ -210,7 +234,7 @@ export default function Home() {
 
               <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 space-y-2">
                 <p className="text-xs md:text-sm text-slate-200 leading-relaxed">
-                  <strong className="text-emerald-400 font-semibold">Executive Summary:</strong> US has emerged as the top buyer for Indian spice exports amid steady demand for cardamom and pepper. Concurrently, domestic pickle sales are experiencing double-digit growth in hubs like Pune, Mumbai, and Gandhinagar driven by quick-commerce.
+                  <strong className="text-emerald-400 font-semibold">Executive Summary:</strong> US has emerged as the top buyer for Indian spice exports amid steady demand for cardamom and pepper. Concurrently, domestic sales are experiencing double-digit growth in hubs like Pune, Mumbai, and Gandhinagar driven by quick-commerce channels.
                 </p>
               </div>
             </div>
