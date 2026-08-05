@@ -1,7 +1,8 @@
-import admin from 'firebase-admin';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Verify required environment variables
+// 1. Verify required environment variables
 const requiredEnvVars = [
   'FIREBASE_PROJECT_ID',
   'FIREBASE_CLIENT_EMAIL',
@@ -16,10 +17,10 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
+// 2. Initialize Firebase Admin cleanly in ESM
+if (!getApps().length) {
+  initializeApp({
+    credential: cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -27,7 +28,7 @@ if (!admin.apps.length) {
   });
 }
 
-const db = admin.firestore();
+const db = getFirestore();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function runDailyIngestion() {
@@ -54,7 +55,7 @@ async function runDailyIngestion() {
     const result = await model.generateContent(prompt);
     let responseText = result.response.text().trim();
     
-    // Clean up potential markdown wrapper formatting
+    // Clean markdown code blocks if returned
     responseText = responseText.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
 
     const articles = JSON.parse(responseText);
@@ -62,10 +63,11 @@ async function runDailyIngestion() {
     for (const article of articles) {
       const docRef = await db.collection('news_articles').add({
         ...article,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
       console.log(`✅ Ingested Bulletin: "${article.title}" (ID: ${docRef.id})`);
     }
+    console.log("🎉 All daily bulletins successfully ingested!");
   } catch (error) {
     console.error("❌ Failed to ingest daily news:", error);
     process.exit(1);
