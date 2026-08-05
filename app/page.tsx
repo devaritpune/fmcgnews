@@ -111,7 +111,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-slate-400 text-xs mt-1.5 font-mono tracking-wide">
-            Multi-Category Executive Intelligence & Geospatial Trade Platform
+            Multi-Category Executive Bulletin, Regional Trends & Geospatial FMCG Insights
           </p>
         </div>
 
