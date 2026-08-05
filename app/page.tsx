@@ -29,7 +29,9 @@ interface Article {
   summary: string;
   full_content?: string;
   region: string;
-  date: string;
+  published_at?: string;
+  date?: string;
+  source_name?: string;
   source_url?: string;
   key_takeaway?: string;
   risk_level?: string;
@@ -52,7 +54,7 @@ export default function Home() {
       setLoading(true);
       try {
         const newsRef = collection(db, "news_articles");
-        const q = query(newsRef, orderBy("published_at", "desc"), limit(20));
+        const q = query(newsRef, orderBy("createdAt", "desc"), limit(20));
         const snapshot = await getDocs(q);
 
         let docs: Article[] = snapshot.docs.map((doc) => ({
@@ -77,11 +79,12 @@ export default function Home() {
             title: "US Overtakes China as Largest Buyer of Indian Spice Exports",
             category: "Spices & Pickles",
             region: "National",
-            date: "2026-08-02",
+            published_at: "06 Aug 2026",
+            source_name: "Economic Times",
             summary: "Indian spice exports recorded high demand in North America led by premium cardamom, cumin, and chilli extracts.",
-            full_content: "According to recent trade bulletin figures, spice exporters in Western and Southern India reported a 18% spike in export orders. Quick commerce adoption in domestic metro regions like Pune and Mumbai is further bolstering packaging revenues.",
+            full_content: "According to recent trade bulletin figures, spice exporters in Western and Southern India reported an 18% spike in export orders. Quick commerce adoption in domestic metro regions like Pune and Mumbai is further bolstering packaging revenues and regional distribution efficiency.",
             key_takeaway: "High export demand balancing out domestic spot raw material inflation.",
-            source_url: "https://fmcgdesk.web.app"
+            source_url: "https://economictimes.indiatimes.com"
           }
         ]);
       } finally {
@@ -268,7 +271,9 @@ export default function Home() {
                         <span className="bg-slate-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded-md font-semibold font-mono">
                           📍 {article.region || "Pan-India"}
                         </span>
-                        <span className="text-slate-500 font-mono text-[11px]">{article.date}</span>
+                        <span className="text-slate-400 font-mono text-[11px]">
+                          📅 {article.published_at || article.date || "Recent"}
+                        </span>
                       </div>
 
                       <h4
@@ -342,43 +347,66 @@ export default function Home() {
 
             <div className="border-b border-slate-800 pb-3 space-y-2">
               <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
-                {selectedArticle.region} Region • Bulletin Detail
+                {selectedArticle.region || "Pan-India"} Region • Bulletin Detail
               </span>
               <h3 className="text-xl md:text-2xl font-black text-white leading-snug">
                 {selectedArticle.title}
               </h3>
-              <p className="text-xs text-slate-400 font-mono">Published: {selectedArticle.date}</p>
+              
+              {/* Metadata Row: Date & Source */}
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1 font-mono">
+                <span>📅 Published: <strong className="text-slate-200">{selectedArticle.published_at || selectedArticle.date || 'Recent'}</strong></span>
+                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name || 'FMCG Intelligence Desk'}</strong></span>
+              </div>
             </div>
 
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm text-slate-200 leading-relaxed">
-                {selectedArticle.full_content || selectedArticle.summary}
+              {/* Detailed Analysis Content */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm text-slate-200 leading-relaxed space-y-3">
+                <p>{selectedArticle.full_content || selectedArticle.summary}</p>
               </div>
 
+              {/* Executive Strategic Takeaway */}
               {selectedArticle.key_takeaway && (
                 <div className="bg-emerald-950/40 border border-emerald-800/60 p-4 rounded-xl text-xs text-emerald-300 font-medium space-y-1">
-                  <strong className="text-emerald-400 uppercase tracking-wider block font-mono">
-                    💡 Executive Takeaway:
+                  <strong className="text-emerald-400 uppercase tracking-wider block font-mono flex items-center gap-1">
+                    💡 Executive Strategic Takeaway:
                   </strong>
-                  <p className="text-slate-200">{selectedArticle.key_takeaway}</p>
+                  <p className="text-slate-200 leading-relaxed">{selectedArticle.key_takeaway}</p>
                 </div>
               )}
             </div>
 
-            <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-              <button
-                onClick={() => handleWhatsAppShare(selectedArticle.title, selectedArticle.source_url)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg transition cursor-pointer flex items-center gap-2"
-              >
-                <span>💬 WhatsApp Share</span>
-              </button>
+            {/* Footer Row with Source Link & Actions */}
+            <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
+              {selectedArticle.source_url ? (
+                <a
+                  href={selectedArticle.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 underline font-medium flex items-center gap-1"
+                >
+                  🔗 Read full article on {selectedArticle.source_name || 'Publisher'} ↗
+                </a>
+              ) : (
+                <span className="text-xs text-slate-500 font-mono">Verified CPG Intelligence</span>
+              )}
 
-              <button
-                onClick={() => setSelectedArticle(null)}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2.5 px-5 rounded-xl transition cursor-pointer"
-              >
-                Close Bulletin
-              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => handleWhatsAppShare(selectedArticle.title, selectedArticle.source_url)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>💬 Share</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedArticle(null)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 px-4 rounded-xl transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
