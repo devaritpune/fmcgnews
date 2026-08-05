@@ -35,7 +35,8 @@ async function runDailyIngestion() {
   console.log("🚀 Starting daily FMCG news ingestion...");
 
   const category = "Spices & Pickles";
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  // Using Gemini 3.1 Flash-Lite
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
   const prompt = `Act as an FMCG Market Intelligence Analyst.
   Generate 2 daily executive market bulletin updates for the Indian FMCG category "${category}" as of today.
