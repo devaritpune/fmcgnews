@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { LocationData } from "../lib/firestoreLocations";
 import {
@@ -37,6 +37,86 @@ interface Article {
   risk_level?: string;
 }
 
+// Translations for UI labels
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: {
+    headerTitle: "FMCG News Desk",
+    headerSubtitle: "Multi-Category Executive Bulletins, Regional Trends & Consumer Insights",
+    aiTitle: "✨ AI MARKET INSIGHTS",
+    aiSubtitle: "Synthesis of Active FMCG Market Intelligence",
+    outlook: "Market Outlook: Bullish",
+    execSummaryLabel: "Executive Summary:",
+    bulletinsTitle: "📰 Executive Market Bulletins",
+    readDetail: "Read Detail Bulletin",
+    share: "Share",
+    source: "Source",
+    published: "Published",
+    keyTakeaway: "💡 Executive Strategic Takeaway:",
+    readFullArticle: "🔗 Read full article on original publisher",
+    noLink: "Source link unavailable",
+    mapTab: "🗺️ India Geospatial Map",
+    intelTab: "📊 Market Intelligence",
+    updatesFound: "Updates Found",
+  },
+  hi: {
+    headerTitle: "FMCG न्यूज डेस्क",
+    headerSubtitle: "बहु-श्रेणी कार्यकारी बुलेटिन, क्षेत्रीय रुझान और उपभोक्ता अंतर्दृष्टि",
+    aiTitle: "✨ एआई बाजार अंतर्दृष्टि",
+    aiSubtitle: "सक्रिय एफएमसीजी बाजार खुफिया का संश्लेषण",
+    outlook: "बाजार दृष्टिकोण: तेजी",
+    execSummaryLabel: "कार्यकारी सारांश:",
+    bulletinsTitle: "📰 कार्यकारी बाजार बुलेटिन",
+    readDetail: "विस्तृत बुलेटिन पढ़ें",
+    share: "साझा करें",
+    source: "स्रोत",
+    published: "प्रकाशित",
+    keyTakeaway: "💡 कार्यकारी रणनीतिक निष्कर्ष:",
+    readFullArticle: "🔗 मूल प्रकाशक पर पूरा लेख पढ़ें",
+    noLink: "स्रोत लिंक उपलब्ध नहीं है",
+    mapTab: "🗺️ भारत भू-स्थानिक मानचित्र",
+    intelTab: "📊 बाजार इंटेलिजेंस",
+    updatesFound: "अपडेट मिले",
+  },
+  mr: {
+    headerTitle: "FMCG न्यूज डेस्क",
+    headerSubtitle: "बहु-श्रेणी कार्यकारी बुलेटिन, प्रादेशिक प्रवाह आणि ग्राहक मते",
+    aiTitle: "✨ AI मार्केट इनसाइट्स",
+    aiSubtitle: "सक्रिय FMCG मार्केट बुद्धिमत्तेचे संश्लेषण",
+    outlook: "बाजार दृष्टीकोन: तेजी",
+    execSummaryLabel: "कार्यकारी सारांश:",
+    bulletinsTitle: "📰 कार्यकारी बाजार बुलेटिन",
+    readDetail: "सविस्तर बुलेटिन वाचा",
+    share: "शेअर करा",
+    source: "स्रोत",
+    published: "प्रसिद्ध झाले",
+    keyTakeaway: "💡 कार्यकारी धोरणात्मक निष्कर्ष:",
+    readFullArticle: "🔗 मूळ बातमी लिंकवर वाचा",
+    noLink: "स्रोत लिंक उपलब्ध नाही",
+    mapTab: "🗺️ भारत नकाशा",
+    intelTab: "📊 मार्केट इंटेलिजन्स",
+    updatesFound: "अपडेट्स सापडले",
+  },
+  gu: {
+    headerTitle: "FMCG ન્યૂઝ ડેસ્ક",
+    headerSubtitle: "મલ્ટિ-કેટેગરી એક્ઝિક્યુટિવ બુલેટિન અને પ્રાદેશિક વલણો",
+    aiTitle: "✨ AI માર્કેટ ઇનસાઇટ્સ",
+    aiSubtitle: "સક્રિય FMCG માર્કેટ ઇન્ટેલિજન્સ સંશ્લેષણ",
+    outlook: "માર્કેટ આઉટલુક: તેજી",
+    execSummaryLabel: "એક્ઝિક્યુટિવ સારાંશ:",
+    bulletinsTitle: "📰 એક્ઝિક્યુટિવ માર્કેટ બુલેટિન",
+    readDetail: "વિગતવાર બુલેટિન વાંચો",
+    share: "શેર કરો",
+    source: "સ્રોત",
+    published: "પ્રકાશિત",
+    keyTakeaway: "💡 વ્યવહારે મુખ્ય નિર્ણય:",
+    readFullArticle: "🔗 મૂળ પ્રકાશક પર સંપૂર્ણ લેખ વાંચો",
+    noLink: "સ્રોત લિંક ઉપલબ્ધ નથી",
+    mapTab: "🗺️ ભારત નકશો",
+    intelTab: "📊 માર્કેટ ઇન્ટેલિજન્સ",
+    updatesFound: "અપડેટ્સ મળ્યા",
+  },
+};
+
 export default function Home() {
   const [activeViewTab, setActiveViewTab] = useState<"intelligence" | "map">("intelligence");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
@@ -49,20 +129,35 @@ export default function Home() {
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
 
+  const t = TRANSLATIONS[selectedLanguage] || TRANSLATIONS.en;
+
   useEffect(() => {
     async function fetchNews() {
       setLoading(true);
       try {
         const newsRef = collection(db, "news_articles");
-        const q = query(newsRef, orderBy("createdAt", "desc"), limit(20));
+        const q = query(newsRef, orderBy("createdAt", "desc"), limit(30));
         const snapshot = await getDocs(q);
+
+        const now = new Date();
+        const maxAgeDays = 30; // Strictly allow only articles within 30 days
 
         let docs: Article[] = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as Omit<Article, "id">),
         }));
 
-        // Client-side region filter fallback if query constraints differ
+        // Filter 1: Recency Filter (30 Days Limit)
+        docs = docs.filter((item) => {
+          const rawDate = item.published_at || item.date;
+          if (!rawDate) return true; // Keep if date parsing fails
+          const pubDate = new Date(rawDate);
+          if (isNaN(pubDate.getTime())) return true;
+          const diffDays = (now.getTime() - pubDate.getTime()) / (1000 * 3600 * 24);
+          return diffDays <= maxAgeDays;
+        });
+
+        // Filter 2: Region Filter
         if (selectedRegion !== "All") {
           docs = docs.filter(
             (item) => item.region?.toLowerCase() === selectedRegion.toLowerCase()
@@ -72,21 +167,6 @@ export default function Home() {
         setArticles(docs);
       } catch (error) {
         console.error("Error fetching articles:", error);
-        // Fallback article for UI display
-        setArticles([
-          {
-            id: "1",
-            title: "US Overtakes China as Largest Buyer of Indian Spice Exports",
-            category: "Spices & Pickles",
-            region: "National",
-            published_at: "06 Aug 2026",
-            source_name: "Economic Times",
-            summary: "Indian spice exports recorded high demand in North America led by premium cardamom, cumin, and chilli extracts.",
-            full_content: "According to recent trade bulletin figures, spice exporters in Western and Southern India reported an 18% spike in export orders. Quick commerce adoption in domestic metro regions like Pune and Mumbai is further bolstering packaging revenues and regional distribution efficiency.",
-            key_takeaway: "High export demand balancing out domestic spot raw material inflation.",
-            source_url: "https://economictimes.indiatimes.com"
-          }
-        ]);
       } finally {
         setLoading(false);
       }
@@ -95,14 +175,23 @@ export default function Home() {
     fetchNews();
   }, [selectedCategory, selectedRegion]);
 
+  // Dynamic Executive Summary generated from loaded active articles
+  const dynamicExecutiveSummary = useMemo(() => {
+    if (articles.length === 0) {
+      return "No active bulletins found for the selected region and category within the past 30 days.";
+    }
+    const keySummaries = articles.slice(0, 3).map((a) => a.summary).join(" ");
+    return `Synthesis of ${articles.length} active updates: ${keySummaries}`;
+  }, [articles]);
+
   const handleWhatsAppShare = (title: string, link?: string) => {
-    const text = encodeURIComponent(`*FMCG News Desk Bulletin:* ${title}\nRead more: ${link || "https://fmcgdesk.web.app"}`);
+    const text = encodeURIComponent(`*FMCG News Desk Bulletin:* ${title}\nRead full story: ${link || "https://fmcgdesk.web.app"}`);
     window.open(`https://api.whatsapp.com/send?text=${text}`, "_blank");
   };
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans antialiased">
-      {/* Universal FMCG Desk Executive Header */}
+      {/* Header */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800/80 pb-6 mb-8 gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -110,17 +199,17 @@ export default function Home() {
               🌐
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              FMCG <span className="text-emerald-400">News Desk</span>
+              {t.headerTitle.split(" ")[0]} <span className="text-emerald-400">{t.headerTitle.split(" ").slice(1).join(" ")}</span>
             </h1>
           </div>
           <p className="text-slate-400 text-xs mt-1.5 font-mono tracking-wide">
-            Multi-Category Executive Bulletins, Regional Trends & Consumer Insights
+            {t.headerSubtitle}
           </p>
         </div>
 
-        {/* Global Controls: Multilingual & Region Selectors */}
+        {/* Global Selectors */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Multi-language Selector */}
+          {/* Language Selector */}
           <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2 rounded-xl shadow-lg">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">🌐</span>
             <select
@@ -154,7 +243,7 @@ export default function Home() {
       </header>
 
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Module Navigation & Multi-Category Selector Tabs */}
+        {/* Navigation Tabs */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800/80 pb-4 gap-4">
           <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
             <button
@@ -167,30 +256,6 @@ export default function Home() {
             >
               🌶️ Spices & Pickles <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">Live</span>
             </button>
-            <button
-              disabled
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
-            >
-              🛢️ Edible Oils <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
-            </button>
-            <button
-              disabled
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
-            >
-              🥛 Dairy Products <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
-            </button>
-            <button
-              disabled
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
-            >
-              🍪 Biscuits & Bakery <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
-            </button>
-            <button
-              disabled
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed flex items-center gap-1.5 shrink-0"
-            >
-              🧼 Personal Care <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
-            </button>
           </div>
 
           <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 self-start lg:self-auto">
@@ -202,7 +267,7 @@ export default function Home() {
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              📊 Market Intelligence
+              {t.intelTab}
             </button>
             <button
               onClick={() => setActiveViewTab("map")}
@@ -212,7 +277,7 @@ export default function Home() {
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              🗺️ India Geospatial Map
+              {t.mapTab}
             </button>
           </div>
         </div>
@@ -220,39 +285,40 @@ export default function Home() {
         {/* TAB 1: EXECUTIVE MARKET INTELLIGENCE VIEW */}
         {activeViewTab === "intelligence" && (
           <div className="space-y-8 animate-fadeIn">
-            {/* AI Executive Summary Hero Card */}
+            {/* Dynamic AI Executive Summary Hero Card */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
               <div className="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-4 mb-4 gap-2">
                 <div className="flex items-center gap-2">
                   <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
                   <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">
-                    ✨ AI MARKET INSIGHTS
+                    {t.aiTitle}
                   </h2>
-                  <span className="text-slate-500 text-xs">| Synthesis of Active FMCG Market Intelligence</span>
+                  <span className="text-slate-500 text-xs">| {t.aiSubtitle}</span>
                 </div>
                 <span className="text-xs font-semibold bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1 rounded-full">
-                  Market Outlook: Bullish
+                  {t.outlook}
                 </span>
               </div>
 
               <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 space-y-2">
                 <p className="text-xs md:text-sm text-slate-200 leading-relaxed">
-                  <strong className="text-emerald-400 font-semibold">Executive Summary:</strong> US has emerged as the top buyer for Indian spice exports amid steady demand for cardamom and pepper. Concurrently, domestic sales are experiencing double-digit growth in hubs like Pune, Mumbai, and Gandhinagar driven by quick-commerce channels.
+                  <strong className="text-emerald-400 font-semibold">{t.execSummaryLabel}</strong>{" "}
+                  {dynamicExecutiveSummary}
                 </p>
               </div>
             </div>
 
-            {/* Articles Header */}
+            {/* Bulletins Header */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                📰 Executive Market Bulletins
+                {t.bulletinsTitle}
               </h3>
               <span className="text-xs font-mono text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
-                {articles.length} Updates Found
+                {articles.length} {t.updatesFound}
               </span>
             </div>
 
-            {/* News Bulletins Cards */}
+            {/* News Cards */}
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3].map((i) => (
@@ -293,7 +359,7 @@ export default function Home() {
                         onClick={() => setSelectedArticle(article)}
                         className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <span>Read Detail Bulletin</span>
+                        <span>{t.readDetail}</span>
                         <span>→</span>
                       </button>
 
@@ -302,7 +368,7 @@ export default function Home() {
                         className="bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/60 text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition cursor-pointer"
                       >
                         <span>💬</span>
-                        <span>Share</span>
+                        <span>{t.share}</span>
                       </button>
                     </div>
                   </div>
@@ -312,29 +378,15 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAB 2: INTERACTIVE GEOSPATIAL MAP VIEW */}
+        {/* TAB 2: GEOSPATIAL MAP VIEW */}
         {activeViewTab === "map" && (
           <div className="space-y-4 animate-fadeIn">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  🗺️ Pan-India Geospatial Trade Intelligence
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Click any city hub marker (e.g. Pune, Gandhinagar, Srinagar) to view market insights.
-                </p>
-              </div>
-              <span className="text-xs font-mono bg-emerald-950 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded-xl font-semibold">
-                37 Key Hubs Seeded
-              </span>
-            </div>
-
             <IndiaMap onSelectLocation={(loc) => setSelectedLocation(loc)} />
           </div>
         )}
       </div>
 
-      {/* MODAL 1: Bulletin Article Detail Drawer */}
+      {/* DETAIL BULLETIN MODAL */}
       {selectedArticle && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-2xl w-full space-y-5 relative shadow-2xl animate-scaleUp">
@@ -353,31 +405,28 @@ export default function Home() {
                 {selectedArticle.title}
               </h3>
               
-              {/* Metadata Row: Date & Source */}
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1 font-mono">
-                <span>📅 Published: <strong className="text-slate-200">{selectedArticle.published_at || selectedArticle.date || 'Recent'}</strong></span>
-                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name || 'FMCG Intelligence Desk'}</strong></span>
+                <span>📅 {t.published}: <strong className="text-slate-200">{selectedArticle.published_at || selectedArticle.date || 'Recent'}</strong></span>
+                <span>📰 {t.source}: <strong className="text-emerald-400">{selectedArticle.source_name || 'FMCG Intelligence Desk'}</strong></span>
               </div>
             </div>
 
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              {/* Detailed Analysis Content */}
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm text-slate-200 leading-relaxed space-y-3">
                 <p>{selectedArticle.full_content || selectedArticle.summary}</p>
               </div>
 
-              {/* Executive Strategic Takeaway */}
               {selectedArticle.key_takeaway && (
                 <div className="bg-emerald-950/40 border border-emerald-800/60 p-4 rounded-xl text-xs text-emerald-300 font-medium space-y-1">
                   <strong className="text-emerald-400 uppercase tracking-wider block font-mono flex items-center gap-1">
-                    💡 Executive Strategic Takeaway:
+                    {t.keyTakeaway}
                   </strong>
                   <p className="text-slate-200 leading-relaxed">{selectedArticle.key_takeaway}</p>
                 </div>
               )}
             </div>
 
-            {/* Footer Row with Source Link & Actions */}
+            {/* Direct Source Link */}
             <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
               {selectedArticle.source_url ? (
                 <a
@@ -386,10 +435,10 @@ export default function Home() {
                   rel="noopener noreferrer"
                   className="text-xs text-emerald-400 hover:text-emerald-300 underline font-medium flex items-center gap-1"
                 >
-                  🔗 Read full article on {selectedArticle.source_name || 'Publisher'} ↗
+                  {t.readFullArticle} ↗
                 </a>
               ) : (
-                <span className="text-xs text-slate-500 font-mono">Verified CPG Intelligence</span>
+                <span className="text-xs text-slate-500 font-mono">{t.noLink}</span>
               )}
 
               <div className="flex items-center gap-2 ml-auto">
@@ -397,7 +446,7 @@ export default function Home() {
                   onClick={() => handleWhatsAppShare(selectedArticle.title, selectedArticle.source_url)}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg transition cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>💬 Share</span>
+                  <span>💬 {t.share}</span>
                 </button>
 
                 <button
@@ -407,72 +456,6 @@ export default function Home() {
                   Close
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: Map Location Insights Modal */}
-      {selectedLocation && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-2xl w-full space-y-5 relative shadow-2xl animate-scaleUp">
-            <button
-              onClick={() => setSelectedLocation(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer"
-            >
-              ✕
-            </button>
-
-            <div className="border-b border-slate-800 pb-3">
-              <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
-                {selectedLocation.region} Region • Hub Intelligence
-              </span>
-              <h3 className="text-2xl font-black text-white mt-2 tracking-tight">
-                {selectedLocation.capital}, {selectedLocation.state}
-              </h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  Dominant Market Brands
-                </h4>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedLocation.dominant_brands?.map((brand) => (
-                    <span
-                      key={brand}
-                      className="bg-slate-800 text-emerald-300 border border-slate-700 text-xs px-3 py-1 rounded-lg font-semibold shadow-sm"
-                    >
-                      {brand}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  Consumer & Culinary Focus
-                </h4>
-                <p className="text-sm text-slate-300 mt-1.5 bg-slate-950 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
-                  {selectedLocation.demographics_focus}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-              <button
-                onClick={() => handleWhatsAppShare(`${selectedLocation.capital} FMCG Market Hub Insights`)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-lg transition cursor-pointer flex items-center gap-2"
-              >
-                <span>💬 WhatsApp Share</span>
-              </button>
-
-              <button
-                onClick={() => setSelectedLocation(null)}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2.5 px-5 rounded-xl transition cursor-pointer"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
