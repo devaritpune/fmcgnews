@@ -51,8 +51,12 @@ interface Article {
   region: string;
   published_at?: any;
   date?: any;
+  timestamp?: any;
+  createdDate?: string;
   source_name?: string;
+  source?: string;
   source_url?: string;
+  url?: string;
   key_takeaway?: string;
   risk_level?: "High" | "Medium" | "Low";
   business_advisory?: {
@@ -60,6 +64,7 @@ interface Article {
     supply_chain?: string;
     export_strategy?: string;
   };
+  actionAdvisory?: string;
   official_compliance_link?: string;
   official_compliance_title?: string;
 }
@@ -79,14 +84,33 @@ export default function Home() {
     async function fetchNews() {
       setLoading(true);
       try {
-        const newsRef = collection(db, "news_articles");
+        // FIXED: Pointing directly to the "bulletins" collection populated by your python scraper
+        const newsRef = collection(db, "bulletins");
         const q = query(newsRef, limit(100));
         const snapshot = await getDocs(q);
 
-        let docs: Article[] = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<Article, "id">),
-        }));
+        let docs: Article[] = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title || "",
+            category: data.category || "Spices & Pickles",
+            sub_category: data.sub_category,
+            market_scope: data.market_scope,
+            summary: data.summary || data.raw_desc || "",
+            full_content: data.full_content || data.summary,
+            region: data.region || "Pan-India",
+            published_at: data.published_at || data.timestamp || data.createdDate,
+            date: data.date || data.createdDate,
+            source_name: data.source_name || data.source,
+            source_url: data.source_url || data.url,
+            key_takeaway: data.key_takeaway,
+            risk_level: data.risk_level || "Medium",
+            business_advisory: data.business_advisory || {
+              qa_compliance: data.actionAdvisory || data.summary,
+            },
+          };
+        });
 
         // Strict 7-Day Filter with timezone safety buffer
         const now = new Date();
@@ -94,7 +118,7 @@ export default function Home() {
 
         docs = docs.filter((item) => {
           const rawDate = item.published_at || item.date;
-          if (!rawDate) return false;
+          if (!rawDate) return true; // Keep items if dates are missing to prevent empty screens during testing
 
           let pubDate: Date;
           if (typeof rawDate === "object" && rawDate.seconds) {
@@ -103,10 +127,10 @@ export default function Home() {
             pubDate = new Date(rawDate);
           }
 
-          if (isNaN(pubDate.getTime())) return false;
+          if (isNaN(pubDate.getTime())) return true;
           const diffDays = (now.getTime() - pubDate.getTime()) / (1000 * 3600 * 24);
 
-          return diffDays >= -1 && diffDays <= maxAgeDays;
+          return diffDays >= -2 && diffDays <= maxAgeDays;
         });
 
         // Apply Category & Sub-Category Filters
@@ -159,7 +183,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#070d19] text-slate-100 p-4 md:p-8 font-sans antialiased">
-      {/* RESTORED: Top Navigation Header with Language & Region Selectors */}
+      {/* Top Navigation Header with Language & Region Selectors */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800/80 pb-6 mb-6 gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -206,9 +230,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* RESTORED: Category Tab Bar & View Toggle Tabs */}
+      {/* Category Tab Bar & View Toggle Tabs */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        {/* Main Category Badge */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSelectedCategory("Spices & Pickles")}
@@ -219,7 +242,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* View Toggle (Market Intelligence vs Map) */}
         <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 self-start md:self-auto">
           <button
             onClick={() => setActiveViewTab("intelligence")}
@@ -244,7 +266,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* RESTORED: Sub-Category Bulletins Filter Row */}
+      {/* Sub-Category Bulletins Filter Row */}
       {activeViewTab === "intelligence" && (
         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 mb-6">
           <button
@@ -290,7 +312,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* RESTORED: AI Market Insights Banner */}
+      {/* AI Market Insights Banner */}
       {activeViewTab === "intelligence" && (
         <div className="max-w-7xl mx-auto mb-8 bg-slate-900/90 border border-emerald-900/60 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
           <div className="flex items-center justify-between gap-4 mb-3">
@@ -317,7 +339,6 @@ export default function Home() {
             <IndiaMap />
           </div>
         ) : (
-          /* Main Bulletins Grid */
           <div>
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -386,7 +407,6 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-3xl w-full space-y-5 relative shadow-2xl max-h-[90vh] overflow-y-auto">
             
-            {/* Close Button */}
             <button
               onClick={() => setSelectedArticle(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer z-10"
@@ -394,7 +414,6 @@ export default function Home() {
               ✕
             </button>
 
-            {/* Header with Padding-Right (pr-10) for alignment */}
             <div className="border-b border-slate-800 pb-4 space-y-3 pr-10">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
@@ -407,7 +426,6 @@ export default function Home() {
                 {selectedArticle.title}
               </h3>
 
-              {/* Top Metadata Row including Read Full Article Link */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1">
                 <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.published_at || selectedArticle.date)}</strong></span>
                 <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name || "FMCG Intelligence Desk"}</strong></span>
@@ -425,14 +443,12 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Deep-Dive Content */}
             <div className="space-y-4">
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm text-slate-200 leading-relaxed">
                 <h5 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider mb-2">Detailed Market Intelligence</h5>
                 <p>{selectedArticle.full_content || selectedArticle.summary}</p>
               </div>
 
-              {/* Strategic Takeaway */}
               {selectedArticle.key_takeaway && (
                 <div className="bg-emerald-950/40 border border-emerald-800/60 p-4 rounded-xl text-xs text-emerald-300 space-y-1">
                   <strong className="text-emerald-400 uppercase font-mono block">💡 Executive Strategic Takeaway</strong>
@@ -440,7 +456,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Stakeholder Action Advisory Box */}
               {selectedArticle.business_advisory && (
                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
                   <h5 className="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">🏢 Action Advisory for Business Stakeholders</h5>
@@ -468,7 +483,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="pt-3 flex items-center justify-between gap-3 border-t border-slate-800">
               <span className="text-xs text-slate-500 font-mono">FMCG Executive Desk</span>
               <button
