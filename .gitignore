@@ -1,6 +1,6 @@
 node_modules/
 .next/
 out/
-y/
-.env*.local
+.env
+.env*
 serviceAccountKey.json

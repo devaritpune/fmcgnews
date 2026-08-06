@@ -1,29 +1,29 @@
-name: Daily FMCG & IB News Ingestion
+name: Daily FMCG & IB News Ingestion[cite: 4]
 
 on:
   schedule:
-    # Runs at 23:30 UTC every day (5:00 AM IST)
-    - cron: '30 23 * * *'
-  workflow_dispatch: # Allows manual trigger anytime from GitHub UI
+    # Runs at 23:30 UTC every day (5:00 AM IST)[cite: 4]
+    - cron: '30 23 * * *'[cite: 4]
+  workflow_dispatch: # Allows manual trigger anytime from GitHub UI[cite: 4]
 
 jobs:
   ingest-news:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest[cite: 4]
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout Code[cite: 4]
+        uses: actions/checkout@v4[cite: 4]
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Node.js[cite: 4]
+        uses: actions/setup-node@v4[cite: 4]
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 20[cite: 4]
+          cache: 'npm'[cite: 4]
 
-      - name: Install Dependencies
-        run: npm ci
+      - name: Install Dependencies[cite: 4]
+        run: npm ci[cite: 4]
 
-      - name: Execute Daily Scraper
+      - name: Execute Daily Scraper[cite: 4]
         env:
-          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: node scripts/fetchNews.mjs
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}[cite: 4]
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}[cite: 4]
+        run: node scripts/fetchNews.mjs[cite: 4]
