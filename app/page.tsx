@@ -1,3 +1,31 @@
+// Helper function to safely display Firebase Timestamps or strings
+function formatDate(dateValue: any): string {
+  if (!dateValue) return "";
+
+  // If it's a Firestore Timestamp object { seconds, nanoseconds }
+  if (typeof dateValue === "object" && dateValue.seconds) {
+    return new Date(dateValue.seconds * 1000).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric"
+    });
+  }
+
+  // If it's an ISO string (e.g., "2026-08-06T15:00:00.000Z")
+  if (typeof dateValue === "string") {
+    const d = new Date(dateValue);
+    return isNaN(d.getTime())
+      ? dateValue
+      : d.toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric"
+        });
+  }
+
+  return String(dateValue);
+}
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -7,9 +35,7 @@ import {
   collection,
   query,
   getDocs,
-  orderBy,
   limit,
-  where,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
@@ -32,9 +58,9 @@ interface Article {
   summary: string;
   full_content?: string;
   region: string;
-  published_at?: string;
-  date?: string;
-  createdAt?: string | { seconds: number };
+  published_at?: any;
+  date?: any;
+  createdAt?: any;
   source_name?: string;
   source_url?: string;
   key_takeaway?: string;
@@ -321,7 +347,14 @@ export default function Home() {
         docs = docs.filter((item) => {
           const rawDate = item.published_at || item.date;
           if (!rawDate) return true;
-          const pubDate = new Date(rawDate);
+          
+          let pubDate: Date;
+          if (typeof rawDate === "object" && rawDate.seconds) {
+            pubDate = new Date(rawDate.seconds * 1000);
+          } else {
+            pubDate = new Date(rawDate);
+          }
+
           if (isNaN(pubDate.getTime())) return true;
           const diffDays = (now.getTime() - pubDate.getTime()) / (1000 * 3600 * 24);
           return diffDays <= maxAgeDays || diffDays < 0;
@@ -477,7 +510,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Sub-Category Filtering Bar (Domestic vs IB Exports vs Regulatory) */}
+        {/* Sub-Category Filtering Bar */}
         {activeViewTab === "intelligence" && (
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
             <button
@@ -586,7 +619,7 @@ export default function Home() {
                           )}
                         </div>
                         <span className="text-slate-400 font-mono text-[11px]">
-                          📅 {article.published_at || article.date || "Recent"}
+                          📅 {formatDate(article.published_at || article.date) || "Recent"}
                         </span>
                       </div>
 
@@ -661,7 +694,9 @@ export default function Home() {
               </h3>
               
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1 font-mono">
-                <span>📅 {t.published}: <strong className="text-slate-200">{selectedArticle.published_at || selectedArticle.date || 'Recent'}</strong></span>
+                <span>
+                  📅 {t.published}: <strong className="text-slate-200">{formatDate(selectedArticle.published_at || selectedArticle.date) || 'Recent'}</strong>
+                </span>
                 <span>📰 {t.source}: <strong className="text-emerald-400">{selectedArticle.source_name || 'FMCG Intelligence Desk'}</strong></span>
               </div>
             </div>
