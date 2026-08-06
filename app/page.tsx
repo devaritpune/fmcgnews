@@ -1,8 +1,20 @@
-// Helper function to safely display Firebase Timestamps or strings
+"use client";
+
+import { useEffect, useState, useMemo } from "react";
+import dynamic from "next/dynamic";
+import { LocationData } from "../lib/firestoreLocations";
+import {
+  collection,
+  query,
+  getDocs,
+  limit,
+} from "firebase/firestore";
+import { db } from "../lib/firebase";
+
+// Safe date formatter for strings or Firestore Timestamps
 function formatDate(dateValue: any): string {
   if (!dateValue) return "";
 
-  // If it's a Firestore Timestamp object { seconds, nanoseconds }
   if (typeof dateValue === "object" && dateValue.seconds) {
     return new Date(dateValue.seconds * 1000).toLocaleDateString("en-IN", {
       day: "numeric",
@@ -11,7 +23,6 @@ function formatDate(dateValue: any): string {
     });
   }
 
-  // If it's an ISO string (e.g., "2026-08-06T15:00:00.000Z")
   if (typeof dateValue === "string") {
     const d = new Date(dateValue);
     return isNaN(d.getTime())
@@ -25,19 +36,6 @@ function formatDate(dateValue: any): string {
 
   return String(dateValue);
 }
-
-"use client";
-
-import { useEffect, useState, useMemo } from "react";
-import dynamic from "next/dynamic";
-import { LocationData } from "../lib/firestoreLocations";
-import {
-  collection,
-  query,
-  getDocs,
-  limit,
-} from "firebase/firestore";
-import { db } from "../lib/firebase";
 
 const IndiaMap = dynamic(() => import("../components/IndiaMap"), {
   ssr: false,
@@ -360,7 +358,7 @@ export default function Home() {
           return diffDays <= maxAgeDays || diffDays < 0;
         });
 
-        // Filter by Sub-Category (e.g. IB - International Business)
+        // Filter by Sub-Category
         if (selectedSubCategory !== "All") {
           docs = docs.filter((item) => {
             if (selectedSubCategory === "IB") {
