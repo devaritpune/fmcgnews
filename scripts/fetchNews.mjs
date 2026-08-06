@@ -1,78 +1,160 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import Parser from "rss-parser";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import dotenv from "dotenv";
+import { createRequire } from "module";
 
-// 1. Verify required environment variables
-const requiredEnvVars = [
-  'FIREBASE_PROJECT_ID',
-  'FIREBASE_CLIENT_EMAIL',
-  'FIREBASE_PRIVATE_KEY',
-  'GEMINI_API_KEY',
-];
+dotenv.config();
+const require = createRequire(import.meta.url);
 
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`❌ Missing required secret: ${envVar}`);
-    process.exit(1);
-  }
-}
-
-// 2. Initialize Firebase Admin cleanly in ESM
+// ---------------------------------------------------------------------------
+// 1. FIREBASE ADMIN INITIALIZATION
+// ---------------------------------------------------------------------------
 if (!getApps().length) {
+  let serviceAccount;
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    // Used in GitHub Actions (Passed as JSON string)
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  } else {
+    // Used for Local Testing (Requires serviceAccountKey.json in project root)
+    try {
+      serviceAccount = require("../serviceAccountKey.json");
+    } catch (e) {
+      console.error(
+        "❌ Missing Firebase Service Account! Set FIREBASE_SERVICE_ACCOUNT_KEY env variable or add serviceAccountKey.json in root folder."
+      );
+      process.exit(1);
+    }
+  }
+
   initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    }),
+    credential: cert(serviceAccount),
   });
 }
 
 const db = getFirestore();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const parser = new Parser();
 
+// ---------------------------------------------------------------------------
+// 2. GEMINI AI INITIALIZATION
+// ---------------------------------------------------------------------------
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.error("❌ Missing GEMINI_API_KEY environment variable!");
+  process.exit(1);
+}
+const genAI = new GoogleGenerativeAI(apiKey);
+
+// ---------------------------------------------------------------------------
+// 3. TARGETED RSS QUERIES (Domestic + International Business/Export Focus)
+// ---------------------------------------------------------------------------
+const SEARCH_QUERIES = [
+  // Domestic FMCG & Spices Focus (15-day window)
+  'FMCG "spices" OR "pickles" India price market sales when:15d',
+  // Export & International Business (IB) Focus
+  'FMCG spice export India APEDA FSSAI regulation tariff international market when:15d',
+  // General FMCG Category Trends
+  'India FMCG consumer trends distribution retail when:15d',
+];
+
+// ---------------------------------------------------------------------------
+// 4. MAIN SCRAPING AND INGESTION PIPELINE
+// ---------------------------------------------------------------------------
 async function runDailyIngestion() {
-  console.log("🚀 Starting daily FMCG news ingestion...");
+  console.log("🚀 Starting Daily FMCG & IB News Ingestion Pipeline...");
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  const category = "Spices & Pickles";
-  // Using Gemini 3.1 Flash-Lite
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  let totalSaved = 0;
+  let totalSkipped = 0;
 
-  const prompt = `Act as an FMCG Market Intelligence Analyst.
-  Generate 2 daily executive market bulletin updates for the Indian FMCG category "${category}" as of today.
-  
-  Return STRICTLY a raw JSON array of objects with no markdown formatting or code blocks.
-  Required keys per object:
-  - title (string): Professional news headline
-  - category (string): "${category}"
-  - region (string): One of ["West", "North", "South", "East", "National"]
-  - summary (string): 2-3 concise sentences on market or consumer trends
-  - full_content (string): Detailed 1-paragraph overview
-  - key_takeaway (string): Strategic insight for brand executives
-  - published_at (string): YYYY-MM-DD
-  `;
+  for (const searchQuery of SEARCH_QUERIES) {
+    console.log(`\n🔍 Scraping Query: "${searchQuery}"`);
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+      searchQuery
+    )}&hl=en-IN&gl=IN&ceid=IN:en`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    let responseText = result.response.text().trim();
-    
-    // Clean markdown code blocks if returned
-    responseText = responseText.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+    try {
+      const feed = await parser.parseURL(rssUrl);
+      console.log(`📰 Found ${feed.items.length} raw articles in feed.`);
 
-    const articles = JSON.parse(responseText);
+      for (const item of feed.items) {
+        if (!item.link || !item.title) continue;
 
-    for (const article of articles) {
-      const docRef = await db.collection('news_articles').add({
-        ...article,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-      console.log(`✅ Ingested Bulletin: "${article.title}" (ID: ${docRef.id})`);
+        // Deduplication Check: Skip if article URL already exists in Firestore
+        const existingDoc = await db
+          .collection("news_articles")
+          .where("source_url", "==", item.link)
+          .limit(1)
+          .get();
+
+        if (!existingDoc.empty) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Prompt Gemini AI to categorize & format article for Executive Desk
+        const prompt = `
+You are an executive FMCG analyst evaluating news for executive leaders and International Business (IB) export directors.
+Analyze this news headline and snippet:
+
+Headline: "${item.title}"
+Snippet: "${item.contentSnippet || ""}"
+
+Respond ONLY with a valid JSON object matching this structure (no markdown formatting, no extra text):
+{
+  "category": "Spices & Pickles",
+  "sub_category": "Must be exactly one of: 'IB - International Business', 'Domestic Market', 'Regulatory & Compliance', 'Raw Materials & Supply'",
+  "market_scope": "Export or Domestic",
+  "target_regions": ["Array of countries/regions mentioned e.g. GCC, EU, US, Pan-India"],
+  "origin_region": "One of: North, South, East, West, Pan-India",
+  "summary_en": "Concise 2-sentence executive summary.",
+  "key_takeaway": "1 sharp strategic recommendation for business leaders.",
+  "regulatory_update": true or false,
+  "sentiment": "Bullish, Bearish, or Neutral"
+}
+`;
+
+        try {
+          const result = await model.generateContent(prompt);
+          const rawText = result.response.text().trim();
+          const cleanJson = rawText.replace(/```json|```/g, "").trim();
+          const aiData = JSON.parse(cleanJson);
+
+          const publishedDate = item.pubDate ? new Date(item.pubDate) : new Date();
+
+          // Write Document to Firestore
+          await db.collection("news_articles").add({
+            title: item.title,
+            category: aiData.category || "Spices & Pickles",
+            sub_category: aiData.sub_category || "Domestic Market",
+            market_scope: aiData.market_scope || "Domestic",
+            target_regions: aiData.target_regions || ["Pan-India"],
+            region: aiData.origin_region || "Pan-India",
+            summary: aiData.summary_en || item.contentSnippet || item.title,
+            key_takeaway: aiData.key_takeaway || "",
+            regulatory_update: Boolean(aiData.regulatory_update),
+            sentiment: aiData.sentiment || "Neutral",
+            source_name: "Google News / FMCG Desk",
+            source_url: item.link,
+            published_at: publishedDate.toISOString(),
+            published_timestamp: Math.floor(publishedDate.getTime() / 1000),
+            createdAt: new Date().toISOString(),
+          });
+
+          totalSaved++;
+          console.log(` ✅ Saved [${aiData.sub_category}]: ${item.title.substring(0, 65)}...`);
+        } catch (aiErr) {
+          console.error(` ⚠️ AI Processing Error for "${item.title}":`, aiErr);
+        }
+      }
+    } catch (rssErr) {
+      console.error(`❌ Error parsing RSS feed for query "${searchQuery}":`, rssErr);
     }
-    console.log("🎉 All daily bulletins successfully ingested!");
-  } catch (error) {
-    console.error("❌ Failed to ingest daily news:", error);
-    process.exit(1);
   }
+
+  console.log(`\n🎉 Ingestion Complete! ${totalSaved} new articles saved, ${totalSkipped} duplicates skipped.`);
 }
 
 runDailyIngestion();

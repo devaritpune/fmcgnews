@@ -1,29 +1,29 @@
-name: Daily Executive Bulletin Ingestion
+name: Daily FMCG & IB News Ingestion
 
 on:
   schedule:
-    - cron: '30 0 * * *'
-  workflow_dispatch:
+    # Runs at 23:30 UTC every day (5:00 AM IST)
+    - cron: '30 23 * * *'
+  workflow_dispatch: # Allows manual trigger anytime from GitHub UI
 
 jobs:
-  run-cron:
+  ingest-news:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Run Fetch Script
+      - name: Execute Daily Scraper
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/fetchNews.mjs

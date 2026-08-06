@@ -9,6 +9,7 @@ import {
   getDocs,
   orderBy,
   limit,
+  where,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
@@ -26,18 +27,21 @@ interface Article {
   id: string;
   title: string;
   category: string;
+  sub_category?: string;
+  market_scope?: string;
   summary: string;
   full_content?: string;
   region: string;
   published_at?: string;
   date?: string;
+  createdAt?: string | { seconds: number };
   source_name?: string;
   source_url?: string;
   key_takeaway?: string;
-  risk_level?: string;
+  regulatory_update?: boolean;
 }
 
-// Translations for UI labels
+// 10 Major Indian Languages UI Translation Dictionary
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   en: {
     headerTitle: "FMCG News Desk",
@@ -57,6 +61,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     mapTab: "🗺️ India Geospatial Map",
     intelTab: "📊 Market Intelligence",
     updatesFound: "Updates Found",
+    noNews: "No active bulletins found for the selected region, category, and sub-category within the past 30 days.",
+    subAll: "🌐 All Bulletins",
+    subDomestic: "🇮🇳 Domestic Market",
+    subIB: "🚢 IB - International Business & Exports",
+    subReg: "📜 Regulatory & Food Safety",
   },
   hi: {
     headerTitle: "FMCG न्यूज डेस्क",
@@ -76,6 +85,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     mapTab: "🗺️ भारत भू-स्थानिक मानचित्र",
     intelTab: "📊 बाजार इंटेलिजेंस",
     updatesFound: "अपडेट मिले",
+    noNews: "पिछले 30 दिनों में चयनित क्षेत्र, श्रेणी और उप-श्रेणी के लिए कोई सक्रिय बुलेटिन नहीं मिला।",
+    subAll: "🌐 सभी बुलेटिन",
+    subDomestic: "🇮🇳 घरेलू बाजार",
+    subIB: "🚢 अंतराष्ट्रीय व्यापार (IB) और निर्यात",
+    subReg: "📜 नियामक और खाद्य सुरक्षा",
   },
   mr: {
     headerTitle: "FMCG न्यूज डेस्क",
@@ -95,6 +109,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     mapTab: "🗺️ भारत नकाशा",
     intelTab: "📊 मार्केट इंटेलिजन्स",
     updatesFound: "अपडेट्स सापडले",
+    noNews: "गेल्या ३० दिवसांत निवडलेल्या प्रदेश, श्रेणी आणि उप-श्रेणीसाठी कोणतीही बातमी सापडली नाही.",
+    subAll: "🌐 सर्व बुलेटिन",
+    subDomestic: "🇮🇳 अंतर्गत बाजार",
+    subIB: "🚢 आंतरराष्ट्रीय व्यवसाय (IB) आणि निर्यात",
+    subReg: "📜 नियामक आणि अन्न सुरक्षा",
   },
   gu: {
     headerTitle: "FMCG ન્યૂઝ ડેસ્ક",
@@ -114,6 +133,155 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     mapTab: "🗺️ ભારત નકશો",
     intelTab: "📊 માર્કેટ ઇન્ટેલિજન્સ",
     updatesFound: "અપડેટ્સ મળ્યા",
+    noNews: "છેલ્લા 30 દિવસમાં કોઈ બુલેટિન મળ્યા નથી.",
+    subAll: "🌐 તમામ બુલેટિન",
+    subDomestic: "🇮🇳 સ્થાનિક માર્કેટ",
+    subIB: "🚢 ઇન્ટરનેશનલ બિઝનેસ (IB) અને નિકાસ",
+    subReg: "📜 રેગ્યુલેટરી અને ફૂડ સેફ્ટી",
+  },
+  ta: {
+    headerTitle: "FMCG செய்திப் பிரிவு",
+    headerSubtitle: "செயல்பாட்டு புல்லட்டின்கள் மற்றும் பிராந்திய சந்தை நுண்ணறிவு",
+    aiTitle: "✨ AI சந்தை நுண்ணறிவு",
+    aiSubtitle: "சந்தை நுண்ணறிவின் தொகுப்பு",
+    outlook: "சந்தை பார்வை: நேர்மறை",
+    execSummaryLabel: "நிர்வாக சுருக்கம்:",
+    bulletinsTitle: "📰 நிர்வாக சந்தை செய்திகள்",
+    readDetail: "முழு விவரம் படிக்க",
+    share: "பகிர்",
+    source: "ஆதாரம்",
+    published: "வெளியிடப்பட்டது",
+    keyTakeaway: "💡 முக்கிய உத்தி:",
+    readFullArticle: "🔗 அசல் செய்தி தளத்தில் படிக்க",
+    noLink: "இணைப்பு கிடைக்கவில்லை",
+    mapTab: "🗺️ இந்திய வரைபடம்",
+    intelTab: "📊 சந்தை தகவல்",
+    updatesFound: "செய்திகள் கிடைத்துள்ளன",
+    noNews: "கடந்த 30 நாட்களில் செய்திகள் எதுவும் கிடைக்கவில்லை.",
+    subAll: "🌐 அனைத்து செய்திகள்",
+    subDomestic: "🇮🇳 உள்நாட்டு சந்தை",
+    subIB: "🚢 சர்வதேச வணிகம் (IB) & ஏற்றுமதி",
+    subReg: "📜 ஒழுங்குமுறை & உணவு பாதுகாப்பு",
+  },
+  te: {
+    headerTitle: "FMCG న్యూస్ డెస్క్",
+    headerSubtitle: "మల్టీ-కేటగిరీ ఎగ్జిక్యూటివ్ బులెటిన్లు మరియు ప్రాంతీయ ట్రెండ్లు",
+    aiTitle: "✨ AI మార్కెట్ ఇన్సైట్స్",
+    aiSubtitle: "యాక్టివ్ మార్కెట్ ఇంటెలిజెన్స్ నివేదిక",
+    outlook: "మార్కెట్ దృక్పథం: బుల్లిష్",
+    execSummaryLabel: "ఎగ్జిక్యూటివ్ సారాంశం:",
+    bulletinsTitle: "📰 ఎగ్జిక్యూటివ్ మార్కెట్ బులెటిన్లు",
+    readDetail: "పూర్తి వివరాలు చదవండి",
+    share: "షేర్ చేయండి",
+    source: "మూలం",
+    published: "ప్రచురించబడింది",
+    keyTakeaway: "💡 ప్రధాన వ్యూహాత్మక అంశం:",
+    readFullArticle: "🔗 మూల ప్రచురణకర్త వద్ద పూర్తి వ్యాసం చదవండి",
+    noLink: "లింక్ లభ్యం కాలేదు",
+    mapTab: "🗺️ ఇండియా మ్యాప్",
+    intelTab: "📊 మార్కెట్ ఇంటెలిజెన్స్",
+    updatesFound: "అప్‌డేట్‌లు లభించాయి",
+    noNews: "గత 30 రోజుల్లో ఎటువంటి అప్‌డేట్‌లు లభించలేదు.",
+    subAll: "🌐 అన్ని బులెటిన్లు",
+    subDomestic: "🇮🇳 దేశీయ మార్కెట్",
+    subIB: "🚢 అంతర్జాతీయ వ్యాపారం (IB) & ఎగుమతులు",
+    subReg: "📜 నియంత్రణ & ఆహార భద్రత",
+  },
+  kn: {
+    headerTitle: "FMCG ನ್ಯೂಸ್ ಡೆಸ್ಕ್",
+    headerSubtitle: "ಮಲ್ಟಿ-ಕ್ಯಾಟಗರಿ ಎಕ್ಸಿಕ್ಯುಟಿವ್ ಬುಲೆಟಿನ್‌ಗಳು ಮತ್ತು ಪ್ರಾದೇಶಿಕ ಟ್ರೆಂಡ್‌ಗಳು",
+    aiTitle: "✨ AI ಮಾರುಕಟ್ಟೆ ಒಳನೋಟಗಳು",
+    aiSubtitle: "ಸಕ್ರಿಯ ಮಾರುಕಟ್ಟೆ ಬುದ್ಧಿವಂತಿಕೆಯ ಸಂಶ್ಲೇಷಣೆ",
+    outlook: "ಮಾರುಕಟ್ಟೆ ದೃಷ್ಟಿಕೋನ: ಆಶಾದಾಯಕ",
+    execSummaryLabel: "ಕಾರ್ಯನಿರ್ವಾಹಕ ಸಾರಾಂಶ:",
+    bulletinsTitle: "📰 ಕಾರ್ಯನಿರ್ವಾಹಕ ಮಾರುಕಟ್ಟೆ ಬುಲೆಟಿನ್‌ಗಳು",
+    readDetail: "ವಿವರವಾಗಿ ಓದಿ",
+    share: "ಹಂಚಿಕೊಳ್ಳಿ",
+    source: "ಮೂಲ",
+    published: "ಪ್ರಕಟಿಸಲಾಗಿದೆ",
+    keyTakeaway: "💡 ಕಾರ್ಯತಂತ್ರದ ಪ್ರಮುಖ ಅಂಶ:",
+    readFullArticle: "🔗 ಮೂಲ ಪ್ರಕಾಶಕರಲ್ಲಿ ಸಂಪೂರ್ಣ ಲೇಖನ ಓದಿ",
+    noLink: "ಲಿಂಕ್ ಲಭ್ಯವಿಲ್ಲ",
+    mapTab: "🗺️ ಭಾರತದ ನಕ್ಷೆ",
+    intelTab: "📊 ಮಾರುಕಟ್ಟೆ ಬುದ್ಧಿವಂತಿಕೆ",
+    updatesFound: "ಅಪ್‌ಡೇಟ್‌ಗಳು ಸಿಕ್ಕಿವೆ",
+    noNews: "ಕಳೆದ 30 ದಿನಗಳಲ್ಲಿ ಯಾವುದೇ ಸುದ್ದಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ.",
+    subAll: "🌐 ಎಲ್ಲಾ ಬುಲೆಟಿನ್‌ಗಳು",
+    subDomestic: "🇮🇳 ದೇಶೀಯ ಮಾರುಕಟ್ಟೆ",
+    subIB: "🚢 ಅಂತಾರಾಷ್ಟ್ರೀಯ ವ್ಯವಹಾರ (IB) & ರಫ್ತು",
+    subReg: "📜 ನಿಯಂತ್ರಣ & ಆಹಾರ ಸುರಕ್ಷತೆ",
+  },
+  ml: {
+    headerTitle: "FMCG ന്യൂസ് ഡെസ്ക്",
+    headerSubtitle: "എക്സിക്യൂട്ടീവ് ബുളറ്റിനുകളും റീജിയണൽ മാർക്കറ്റ് വിവരങ്ങളും",
+    aiTitle: "✨ AI മാർക്കറ്റ് ഇൻസൈറ്റുകൾ",
+    aiSubtitle: "മാർക്കറ്റ് ഇന്റലിജൻസ് വിശകലനം",
+    outlook: "മാർക്കറ്റ് ഔട്ട്‌ലുക്ക്: ശുഭപ്രതീക്ഷ",
+    execSummaryLabel: "എക്സിക്യൂട്ടീവ് സമ്മറി:",
+    bulletinsTitle: "📰 മാർക്കറ്റ് ബുളറ്റിനുകൾ",
+    readDetail: "വിശദമായി വായിക്കുക",
+    share: "പങ്കുവെക്കുക",
+    source: "ഉറവിടം",
+    published: "പ്രസിദ്ധീകരിച്ചത്",
+    keyTakeaway: "💡 പ്രധാന തന്ത്രം:",
+    readFullArticle: "🔗 പ്രധാന വെബ്‌സൈറ്റിൽ പൂർണ്ണ ലേഖനം വായിക്കുക",
+    noLink: "ലിങ്ക് ലഭ്യമല്ല",
+    mapTab: "🗺️ ഇന്ത്യ മാപ്പ്",
+    intelTab: "📊 മാർക്കറ്റ് ഇന്റലിജൻസ്",
+    updatesFound: "അപ്‌ഡേറ്റുകൾ ലഭ്യമാണ്",
+    noNews: "കഴിഞ്ഞ 30 ദിവസത്തിനുള്ളിൽ വാർത്തകളൊന്നും ലഭ്യമായിട്ടില്ല.",
+    subAll: "🌐 എല്ലാ വാർത്തകളും",
+    subDomestic: "🇮🇳 പ്രാദേശിക വിപണി",
+    subIB: "🚢 അന്താരാഷ്ട്ര ബിസിനസ്സ് (IB) & കയറ്റുമതി",
+    subReg: "📜 റഗുലേറ്ററി & ഫുഡ് സേഫ്റ്റി",
+  },
+  bn: {
+    headerTitle: "FMCG নিউজ ডেস্ক",
+    headerSubtitle: "মাল্টি-ক্যাটাগরি এক্সিকিউটিভ বুলেটিন এবং আঞ্চলিক বাজারের ট্রেন্ড",
+    aiTitle: "✨ AI মার্কেট ইনসাইটস",
+    aiSubtitle: "সক্রিয় বাজার ইন্টেলিজেন্সের সংশ্লেষণ",
+    outlook: "বাজার আউটলুক: চাঙ্গা",
+    execSummaryLabel: "নির্বাহী সারাংশ:",
+    bulletinsTitle: "📰 এক্সিকিউটিভ মার্কেট বুলেটিন",
+    readDetail: "বিস্তারিত পড়ুন",
+    share: "শেয়ার করুন",
+    source: "উৎস",
+    published: "প্রকাশিত",
+    keyTakeaway: "💡 কৌশলগত সিদ্ধান্ত:",
+    readFullArticle: "🔗 মূল প্রকাশকের সাইটে পুরো নিবন্ধটি পড়ুন",
+    noLink: "লিঙ্ক পাওয়া যায়নি",
+    mapTab: "🗺️ ভারত মানচিত্র",
+    intelTab: "📊 মার্কেট ইন্টেলিজেন্স",
+    updatesFound: "আপডেট পাওয়া গেছে",
+    noNews: "গত ৩০ দিনে কোনো আপডেট পাওয়া যায়নি।",
+    subAll: "🌐 সমস্ত বুলেটিন",
+    subDomestic: "🇮🇳 অভ্যন্তরীণ বাজার",
+    subIB: "🚢 আন্তর্জাতিক ব্যবসা (IB) এবং রফতানি",
+    subReg: "📜 রেগুলেটরি এবং খাদ্য সুরক্ষা",
+  },
+  pa: {
+    headerTitle: "FMCG ਨਿਊਜ਼ ਡੈਸਕ",
+    headerSubtitle: "ਮਲਟੀ-ਕੈਟੇਗਰੀ ਐਗਜ਼ੀਕਿਊਟਿਵ ਬੁਲੇਟਿਨ ਅਤੇ ਖੇਤਰੀ ਰੁਝਾਨ",
+    aiTitle: "✨ AI ਮਾਰਕੀਟ ਇਨਸਾਈਟਸ",
+    aiSubtitle: "ਮਾਰਕੀਟ ਇੰਟੈਲੀਜੈਂਸ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ",
+    outlook: "ਮਾਰਕੀਟ ਆਊਟਲੁੱਕ: ਤੇਜ਼ੀ",
+    execSummaryLabel: "ਐਗਜ਼ੀਕਿਊਟਿਵ ਸੰਖੇਪ:",
+    bulletinsTitle: "📰 ਮਾਰਕੀਟ ਬੁਲੇਟਿਨ",
+    readDetail: "ਵਿਸਤਾਰ ਵਿੱਚ ਪੜ੍ਹੋ",
+    share: "ਸ਼ੇਅਰ ਕਰੋ",
+    source: "ਸਰੋਤ",
+    published: "ਪ੍ਰਕਾਸ਼ਿਤ",
+    keyTakeaway: "💡 ਮੁੱਖ ਰਣਨੀਤਕ ਨੁਕਤਾ:",
+    readFullArticle: "🔗 ਅਸਲ ਪ੍ਰਕਾਸ਼ਕ 'ਤੇ ਪੂਰਾ ਲੇਖ ਪੜ੍ਹੋ",
+    noLink: "ਲਿੰਕ ਉਪਲਬਧ ਨਹੀਂ ਹੈ",
+    mapTab: "🗺️ ਭਾਰਤ ਦਾ ਨਕਸ਼ਾ",
+    intelTab: "📊 ਮਾਰਕੀਟ ਇੰਟੈਲੀਜੈਂਸ",
+    updatesFound: "ਅੱਪਡੇਟ ਮਿਲੇ",
+    noNews: "ਪਿਛਲੇ 30 ਦਿਨਾਂ ਵਿੱਚ ਕੋਈ ਅੱਪਡੇਟ ਨਹੀਂ ਮਿਲਿਆ।",
+    subAll: "🌐 ਸਾਰੇ ਬੁਲੇਟਿਨ",
+    subDomestic: "🇮🇳 ਘਰੇਲੂ ਬਾਜ਼ਾਰ",
+    subIB: "🚢 ਅੰਤਰਰਾਸ਼ਟਰੀ ਵਪਾਰ (IB) ਅਤੇ ਬਰਾਮਦ",
+    subReg: "📜 ਰੈਗੂਲੇਟਰੀ ਅਤੇ ਭੋਜਨ ਸੁਰੱਖਿਆ",
   },
 };
 
@@ -122,9 +290,11 @@ export default function Home() {
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
   const [selectedLanguage, setSelectedLanguage] = useState<string>("en");
   const [selectedCategory, setSelectedCategory] = useState<string>("Spices & Pickles");
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>("All");
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  
+
   // Modals state
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
@@ -136,28 +306,47 @@ export default function Home() {
       setLoading(true);
       try {
         const newsRef = collection(db, "news_articles");
-        const q = query(newsRef, orderBy("createdAt", "desc"), limit(30));
+        const q = query(newsRef, limit(50));
         const snapshot = await getDocs(q);
-
-        const now = new Date();
-        const maxAgeDays = 30; // Strictly allow only articles within 30 days
 
         let docs: Article[] = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as Omit<Article, "id">),
         }));
 
-        // Filter 1: Recency Filter (30 Days Limit)
+        // Date Filter (30 Days Limit)
+        const now = new Date();
+        const maxAgeDays = 30;
+
         docs = docs.filter((item) => {
           const rawDate = item.published_at || item.date;
-          if (!rawDate) return true; // Keep if date parsing fails
+          if (!rawDate) return true;
           const pubDate = new Date(rawDate);
           if (isNaN(pubDate.getTime())) return true;
           const diffDays = (now.getTime() - pubDate.getTime()) / (1000 * 3600 * 24);
-          return diffDays <= maxAgeDays;
+          return diffDays <= maxAgeDays || diffDays < 0;
         });
 
-        // Filter 2: Region Filter
+        // Filter by Sub-Category (e.g. IB - International Business)
+        if (selectedSubCategory !== "All") {
+          docs = docs.filter((item) => {
+            if (selectedSubCategory === "IB") {
+              return (
+                item.sub_category === "IB - International Business" ||
+                item.market_scope === "Export"
+              );
+            }
+            if (selectedSubCategory === "Domestic") {
+              return item.sub_category === "Domestic Market" || item.market_scope === "Domestic";
+            }
+            if (selectedSubCategory === "Regulatory") {
+              return item.regulatory_update === true || item.sub_category === "Regulatory & Compliance";
+            }
+            return true;
+          });
+        }
+
+        // Filter by Region
         if (selectedRegion !== "All") {
           docs = docs.filter(
             (item) => item.region?.toLowerCase() === selectedRegion.toLowerCase()
@@ -173,16 +362,16 @@ export default function Home() {
     }
 
     fetchNews();
-  }, [selectedCategory, selectedRegion]);
+  }, [selectedCategory, selectedSubCategory, selectedRegion]);
 
-  // Dynamic Executive Summary generated from loaded active articles
+  // Executive AI Summary Synthesis
   const dynamicExecutiveSummary = useMemo(() => {
     if (articles.length === 0) {
-      return "No active bulletins found for the selected region and category within the past 30 days.";
+      return t.noNews;
     }
     const keySummaries = articles.slice(0, 3).map((a) => a.summary).join(" ");
     return `Synthesis of ${articles.length} active updates: ${keySummaries}`;
-  }, [articles]);
+  }, [articles, t]);
 
   const handleWhatsAppShare = (title: string, link?: string) => {
     const text = encodeURIComponent(`*FMCG News Desk Bulletin:* ${title}\nRead full story: ${link || "https://fmcgdesk.web.app"}`);
@@ -209,7 +398,7 @@ export default function Home() {
 
         {/* Global Selectors */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Language Selector */}
+          {/* Multi-Language Selector */}
           <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2 rounded-xl shadow-lg">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">🌐</span>
             <select
@@ -221,6 +410,12 @@ export default function Home() {
               <option value="hi">हिंदी (Hindi)</option>
               <option value="mr">मराठी (Marathi)</option>
               <option value="gu">ગુજરાતી (Gujarati)</option>
+              <option value="ta">தமிழ் (Tamil)</option>
+              <option value="te">తెలుగు (Telugu)</option>
+              <option value="kn">ಕನ್ನಡ (Kannada)</option>
+              <option value="ml">മലയാളം (Malayalam)</option>
+              <option value="bn">বাংলা (Bengali)</option>
+              <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
             </select>
           </div>
 
@@ -242,8 +437,8 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Navigation Tabs */}
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Primary Category Switcher & View Tabs */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800/80 pb-4 gap-4">
           <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
             <button
@@ -281,6 +476,52 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* Sub-Category Filtering Bar (Domestic vs IB Exports vs Regulatory) */}
+        {activeViewTab === "intelligence" && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2">
+            <button
+              onClick={() => setSelectedSubCategory("All")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition border shrink-0 ${
+                selectedSubCategory === "All"
+                  ? "bg-slate-800 border-slate-600 text-white"
+                  : "bg-slate-950/50 border-slate-800/80 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {t.subAll}
+            </button>
+            <button
+              onClick={() => setSelectedSubCategory("Domestic")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition border shrink-0 ${
+                selectedSubCategory === "Domestic"
+                  ? "bg-emerald-950 border-emerald-600 text-emerald-300"
+                  : "bg-slate-950/50 border-slate-800/80 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {t.subDomestic}
+            </button>
+            <button
+              onClick={() => setSelectedSubCategory("IB")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition border shrink-0 ${
+                selectedSubCategory === "IB"
+                  ? "bg-blue-950 border-blue-500 text-blue-300 shadow-lg shadow-blue-950/50"
+                  : "bg-slate-950/50 border-slate-800/80 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {t.subIB}
+            </button>
+            <button
+              onClick={() => setSelectedSubCategory("Regulatory")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition border shrink-0 ${
+                selectedSubCategory === "Regulatory"
+                  ? "bg-amber-950 border-amber-500 text-amber-300"
+                  : "bg-slate-950/50 border-slate-800/80 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {t.subReg}
+            </button>
+          </div>
+        )}
 
         {/* TAB 1: EXECUTIVE MARKET INTELLIGENCE VIEW */}
         {activeViewTab === "intelligence" && (
@@ -334,9 +575,16 @@ export default function Home() {
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="bg-slate-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded-md font-semibold font-mono">
-                          📍 {article.region || "Pan-India"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="bg-slate-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded-md font-semibold font-mono">
+                            📍 {article.region || "Pan-India"}
+                          </span>
+                          {article.market_scope === "Export" && (
+                            <span className="bg-blue-950 text-blue-300 border border-blue-800/60 px-2 py-0.5 rounded-md font-semibold font-mono text-[10px]">
+                              🚢 Export / IB
+                            </span>
+                          )}
+                        </div>
                         <span className="text-slate-400 font-mono text-[11px]">
                           📅 {article.published_at || article.date || "Recent"}
                         </span>
@@ -398,9 +646,16 @@ export default function Home() {
             </button>
 
             <div className="border-b border-slate-800 pb-3 space-y-2">
-              <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
-                {selectedArticle.region || "Pan-India"} Region • Bulletin Detail
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
+                  {selectedArticle.region || "Pan-India"} Region • Bulletin Detail
+                </span>
+                {selectedArticle.sub_category && (
+                  <span className="text-xs font-mono bg-slate-800 text-slate-300 px-2.5 py-1 rounded-md font-semibold">
+                    {selectedArticle.sub_category}
+                  </span>
+                )}
+              </div>
               <h3 className="text-xl md:text-2xl font-black text-white leading-snug">
                 {selectedArticle.title}
               </h3>
