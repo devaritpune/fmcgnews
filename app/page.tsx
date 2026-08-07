@@ -7,7 +7,6 @@ import { db } from "../lib/firebase";
 
 function formatDate(dateValue: any): string {
   if (!dateValue) return "";
-
   if (typeof dateValue === "object" && dateValue.seconds) {
     return new Date(dateValue.seconds * 1000).toLocaleDateString("en-IN", {
       day: "numeric",
@@ -15,7 +14,6 @@ function formatDate(dateValue: any): string {
       year: "numeric",
     });
   }
-
   if (typeof dateValue === "string") {
     const d = new Date(dateValue);
     return isNaN(d.getTime())
@@ -26,11 +24,9 @@ function formatDate(dateValue: any): string {
           year: "numeric",
         });
   }
-
   return String(dateValue);
 }
 
-// Dynamic import for the Map Component to support Leaflet / Client-side rendering
 const IndiaMap = dynamic(() => import("../components/IndiaMap"), {
   ssr: false,
   loading: () => (
@@ -59,22 +55,19 @@ interface Article {
   source_url?: string;
   url?: string;
   key_takeaway?: string;
-  risk_level?: "High" | "Medium" | "Low";
-  riskLevel?: string;
+  risk_level?: string;
   business_advisory?: {
     qa_compliance?: string;
     supply_chain?: string;
     export_strategy?: string;
   };
   actionAdvisory?: string;
-  official_compliance_link?: string;
-  official_compliance_title?: string;
 }
 
 export default function Home() {
   const [activeViewTab, setActiveViewTab] = useState<"intelligence" | "map">("intelligence");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("en");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("English");
   const [selectedCategory, setSelectedCategory] = useState<string>("Spices & Pickles");
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("All");
 
@@ -86,7 +79,6 @@ export default function Home() {
     async function fetchNews() {
       setLoading(true);
       try {
-        // Querying the correct "bulletins" collection populated by your scraper
         const newsRef = collection(db, "bulletins");
         const q = query(newsRef, limit(100));
         const snapshot = await getDocs(q);
@@ -97,50 +89,31 @@ export default function Home() {
             id: doc.id,
             title: data.title || "",
             category: data.category || "Spices & Pickles",
-            sub_category: data.sub_category,
-            market_scope: data.market_scope,
+            sub_category: data.sub_category || "",
+            market_scope: data.market_scope || "",
             summary: data.summary || data.raw_desc || "",
-            full_content: data.full_content || data.summary,
+            full_content: data.full_content || data.summary || "",
             region: data.region || "Pan-India",
             published_at: data.published_at || data.timestamp || data.createdDate,
             date: data.date || data.createdDate,
-            source_name: data.source_name || data.source,
-            source_url: data.source_url || data.url,
-            key_takeaway: data.key_takeaway,
-            risk_level: (data.risk_level || data.riskLevel || "Medium") as "High" | "Medium" | "Low",
+            source_name: data.source_name || data.source || "Market Desk",
+            source_url: data.source_url || data.url || "",
+            key_takeaway: data.key_takeaway || data.actionAdvisory || "",
+            risk_level: data.risk_level || data.riskLevel || "MEDIUM",
             business_advisory: data.business_advisory || {
-              qa_compliance: data.actionAdvisory || data.summary,
+              qa_compliance: data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
             },
           };
         });
 
-        // Safe 7-Day Window Filter
-        const now = new Date();
-        const maxAgeDays = 8;
-
-        docs = docs.filter((item) => {
-          const rawDate = item.published_at || item.date;
-          if (!rawDate) return true;
-
-          let pubDate: Date;
-          if (typeof rawDate === "object" && rawDate.seconds) {
-            pubDate = new Date(rawDate.seconds * 1000);
-          } else {
-            pubDate = new Date(rawDate);
-          }
-
-          if (isNaN(pubDate.getTime())) return true;
-          const diffDays = (now.getTime() - pubDate.getTime()) / (1000 * 3600 * 24);
-
-          return diffDays >= -2 && diffDays <= maxAgeDays;
-        });
-
-        // Apply Sub-Category Filters
+        // Apply Sub-Category Filters safely
         if (selectedSubCategory !== "All") {
           docs = docs.filter((item) => {
-            if (selectedSubCategory === "Domestic") return item.market_scope === "Domestic";
-            if (selectedSubCategory === "Export") return item.market_scope === "Export";
-            if (selectedSubCategory === "Regulatory") return item.sub_category === "Regulatory & Compliance";
+            const scope = (item.market_scope || "").toLowerCase();
+            const subCat = (item.sub_category || "").toLowerCase();
+            if (selectedSubCategory === "Domestic") return scope.includes("domestic") || item.region !== "International";
+            if (selectedSubCategory === "Export") return scope.includes("export") || scope.includes("ib") || scope.includes("international");
+            if (selectedSubCategory === "Regulatory") return subCat.includes("regulatory") || subCat.includes("compliance") || subCat.includes("safety");
             return true;
           });
         }
@@ -161,9 +134,8 @@ export default function Home() {
     fetchNews();
   }, [selectedCategory, selectedSubCategory, selectedRegion]);
 
-  // Executive AI Market Insights Synthesis
   const executiveInsightsSummary = useMemo(() => {
-    if (articles.length === 0) return "No critical market disruptions reported in the active window.";
+    if (articles.length === 0) return "No critical market disruptions reported in the active collection.";
     const titles = articles.slice(0, 3).map((a) => a.title).join("; ");
     return `Synthesis of ${articles.length} active updates: Key developments across regional hubs indicate dynamic pricing, export compliance checks, and raw material safety audits. Highlights: ${titles}`;
   }, [articles]);
@@ -202,7 +174,7 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Global Controls */}
+        {/* Global Controls & 10 Indian Languages */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-2">
             <span className="text-xs text-slate-400">🌐</span>
@@ -211,8 +183,16 @@ export default function Home() {
               onChange={(e) => setSelectedLanguage(e.target.value)}
               className="bg-transparent text-xs text-emerald-400 font-semibold focus:outline-none cursor-pointer"
             >
-              <option value="en" className="bg-slate-900 text-white">English</option>
-              <option value="hi" className="bg-slate-900 text-white">Hindi</option>
+              <option value="English" className="bg-slate-900 text-white">English</option>
+              <option value="Hindi" className="bg-slate-900 text-white">हिन्दी (Hindi)</option>
+              <option value="Bengali" className="bg-slate-900 text-white">বাংলা (Bengali)</option>
+              <option value="Telugu" className="bg-slate-900 text-white">తెలుగు (Telugu)</option>
+              <option value="Marathi" className="bg-slate-900 text-white">मराठी (Marathi)</option>
+              <option value="Tamil" className="bg-slate-900 text-white">தமிழ் (Tamil)</option>
+              <option value="Gujarati" className="bg-slate-900 text-white">ગુજરાતી (Gujarati)</option>
+              <option value="Kannada" className="bg-slate-900 text-white">ಕನ್ನಡ (Kannada)</option>
+              <option value="Malayalam" className="bg-slate-900 text-white">മലയാളം (Malayalam)</option>
+              <option value="Punjabi" className="bg-slate-900 text-white">ਪੰਜਾਬੀ (Punjabi)</option>
             </select>
           </div>
 
@@ -233,12 +213,12 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Categories Bar & Two Main Views Switcher */}
+      {/* Categories Bar & View Tab Switcher */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setSelectedCategory("Spices & Pickles")}
-            className="bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-950/50"
+            className="bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer"
           >
             <span>🌶️ Spices & Pickles</span>
             <span className="bg-emerald-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full uppercase">Live</span>
@@ -246,7 +226,6 @@ export default function Home() {
           <span className="text-xs text-slate-500 font-mono italic">Edible Oils, Dairy, Bakery coming soon</span>
         </div>
 
-        {/* Tab 1: Bulletin Tab vs Tab 2: India Map with City Data */}
         <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 self-start md:self-auto">
           <button
             onClick={() => setActiveViewTab("intelligence")}
@@ -271,7 +250,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Sub-Category Filter Bar for Bulletins */}
+      {/* Sub-Category Filters */}
       {activeViewTab === "intelligence" && (
         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 mb-6">
           <button
@@ -354,7 +333,7 @@ export default function Home() {
             ) : articles.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-2">
                 <p className="text-base font-bold text-slate-200">No active bulletins found in Firebase bulletins collection.</p>
-                <p className="text-xs text-slate-500">Run your scraper script to populate data or toggle region filters.</p>
+                <p className="text-xs text-slate-500">Ensure scraper data is populated or switch region/sub-category filters.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -431,7 +410,7 @@ export default function Home() {
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1">
                 <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.published_at || selectedArticle.date)}</strong></span>
-                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name || "FMCG Intelligence Desk"}</strong></span>
+                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name}</strong></span>
                 
                 {selectedArticle.source_url && (
                   <a
