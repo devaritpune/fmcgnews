@@ -67,6 +67,118 @@ interface Article {
   language?: string;
 }
 
+// Multilingual Mock Dictionary / Translation Engine for Indian Languages
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  Hindi: {
+    "AI MARKET INSIGHTS": "एआई बाज़ार अंतर्दृष्टि",
+    "Executive Summary": "कार्यकारी सारांश",
+    "Market Outlook": "बाज़ार दृष्टिकोण",
+    "Bullish": "तेजी (Bullish)",
+    "Read Executive Bulletin": "कार्यकारी बुलेटिन पढ़ें",
+    "Share": "शेयर करें",
+    "Domestic Market": "घरेलू बाज़ार",
+    "IB (International Business & Exports)": "अंतर्राष्ट्रीय व्यापार और निर्यात",
+    "Regulatory & Food Safety": "नियामक और खाद्य सुरक्षा",
+    "All Bulletins (All India)": "सभी बुलेटिन (अखिल भारत)"
+  },
+  Bengali: {
+    "AI MARKET INSIGHTS": "এআই বাজার অন্তর্দৃষ্টি",
+    "Executive Summary": "নির্বাহী সারসংক্ষেপ",
+    "Market Outlook": "বাজারের দৃষ্টিভঙ্গি",
+    "Bullish": "ঊর্ধ্বমুখী (Bullish)",
+    "Read Executive Bulletin": "নির্বাহী বুলেটিন পড়ুন",
+    "Share": "শেয়ার করুন",
+    "Domestic Market": "গার্হস্থ্য বাজার",
+    "IB (International Business & Exports)": "আন্তর্জাতিক বাণিজ্য এবং রপ্তানি",
+    "Regulatory & Food Safety": "নিয়ন্ত্রক এবং খাদ্য নিরাপত্তা",
+    "All Bulletins (All India)": "সমস্ত বুলেটিন (সর্বভারতীয়)"
+  },
+  Telugu: {
+    "AI MARKET INSIGHTS": "AI మార్కెట్ అంతर्दृष्टि",
+    "Executive Summary": "నిర్వాహక సారాంశం",
+    "Market Outlook": "మార్కెట్ దృక్పథం",
+    "Bullish": "బుల్లిష్",
+    "Read Executive Bulletin": "ఎగ్జిక్యూటివ్ బుెటిన్ చదవండి",
+    "Share": "షేర్ చేయండి",
+    "Domestic Market": "దేశీయ మార్కెట్",
+    "IB (International Business & Exports)": "అంతర్జాతీయ వ్యాపారం & ఎగుమతులు",
+    "Regulatory & Food Safety": "నియంత్రణ & ఆహార భద్రత",
+    "All Bulletins (All India)": "అన్ని బుెటిన్‌లు (అఖిల భారతదేశం)"
+  },
+  Marathi: {
+    "AI MARKET INSIGHTS": "एआय बाजार अंतर्दृष्टी",
+    "Executive Summary": "कार्यकारी सारांश",
+    "Market Outlook": "बाजार दृष्टिकोन",
+    "Bullish": "बुलीश",
+    "Read Executive Bulletin": "कार्यकारी बुलेटिन वाचा",
+    "Share": "शेअर करा",
+    "Domestic Market": "देशंतर्गत बाजारपेठ",
+    "IB (International Business & Exports)": "आंतरराष्ट्रीय व्यापार आणि निर्यात",
+    "Regulatory & Food Safety": "नियामक आणि अन्न सुरक्षा",
+    "All Bulletins (All India)": "सर्व बुलेटिन (अखिल भारत)"
+  },
+  Tamil: {
+    "AI MARKET INSIGHTS": "AI சந்தை நுண்ணறிவு",
+    "Executive Summary": "நிர்வாக சுருக்கம்",
+    "Market Outlook": "சந்தை கண்ணோட்டம்",
+    "Bullish": "உச்சநிலை",
+    "Read Executive Bulletin": "செய்தி குறிப்பை படிக்கவும்",
+    "Share": "பகிரவும்",
+    "Domestic Market": "உள்நாட்டு சந்தை",
+    "IB (International Business & Exports)": "சர்வதேச வணிகம் & ஏற்றுமதி",
+    "Regulatory & Food Safety": "ஒழுங்குமுறை & உணவு பாதுகாப்பு",
+    "All Bulletins (All India)": "அனைத்து বুলেটின்களும்"
+  },
+  Gujarati: {
+    "AI MARKET INSIGHTS": "એઆઈ માર્કેટ આંતरદૃષ્ટિ",
+    "Executive Summary": "कार्यकारी सारांश",
+    "Market Outlook": "બજાર દૃષ્ટિકોણ",
+    "Bullish": "બુલીશ",
+    "Read Executive Bulletin": "બુલેટિન વાંચો",
+    "Share": "શેર કરો",
+    "Domestic Market": "ઘરેलू બજાર",
+    "IB (International Business & Exports)": "આંતરરાષ્ટ્રીય વ્યાપાર અને નિકાસ",
+    "Regulatory & Food Safety": "નિયમન અને ખાદ્ય સુરક્ષા",
+    "All Bulletins (All India)": "બધા બુલેટિન"
+  },
+  Kannada: {
+    "AI MARKET INSIGHTS": "AI ಮಾರುಕಟ್ಟೆ ಒಳಹೋಟುಗಳು",
+    "Executive Summary": "ಕಾರ್ಯನಿರ್ವಾಹಕ ಸಾರಾಂಶ",
+    "Market Outlook": "ಮಾರುಕಟ್ಟೆ ದೃಷ್ಟಿಕೋನ",
+    "Bullish": "ಬುಲಿಶ್",
+    "Read Executive Bulletin": "ಬುಲೆಟಿನ್ ಓದಿ",
+    "Share": "ಹಂಚಿಕೊಳ್ಳಿ",
+    "Domestic Market": "ದೇಶೀಯ ಮಾರುಕಟ್ಟೆ",
+    "IB (International Business & Exports)": "ಅಂತರರಾಷ್ಟ್ರೀಯ ವ್ಯಾಪಾರ ಮತ್ತು ರಫ್ತು",
+    "Regulatory & Food Safety": "ನಿಯಂತ್ರಣ ಮತ್ತು ಆಹಾರ ಸುರಕ್ಷತೆ",
+    "All Bulletins (All India)": "ಎಲ್ಲಾ ಬುಲೆಟಿನ್‌ಗಳು"
+  },
+  Malayalam: {
+    "AI MARKET INSIGHTS": "AI മാർക്കറ്റ് ഉൾക്കാഴ്ചകൾ",
+    "Executive Summary": "എക്സിക്യൂട്ടീവ് സംഗ്രഹം",
+    "Market Outlook": "വിപണി വീക്ഷണം",
+    "Bullish": "ബുള്ളിഷ്",
+    "Read Executive Bulletin": "ബുള്ളറ്റിൻ വായിക്കുക",
+    "Share": "പങ്കിടുക",
+    "Domestic Market": "ആഭ്യന്തര വിപണി",
+    "IB (International Business & Exports)": "അന്താരാഷ്ട്ര വ്യാപാരവും കയറ്റുമതിയും",
+    "Regulatory & Food Safety": "റെഗുലേറ്ററി & ഭക്ഷ്യ സുരക്ഷ",
+    "All Bulletins (All India)": "എല്ലാ ബുള്ളറ്റിനുകളും"
+  },
+  Punjabi: {
+    "AI MARKET INSIGHTS": "ਏਆਈ ਮਾਰਕੀਟ ਸੂਝ",
+    "Executive Summary": "कार्यकारी सारांश",
+    "Market Outlook": "ਬਜ਼ਾਰ ਦ੍ਰਿਸ਼ਟੀਕੋਣ",
+    "Bullish": "ਤੇਜ਼ੀ",
+    "Read Executive Bulletin": "ਬੁਲੇਟਿਨ ਪੜ੍ਹੋ",
+    "Share": "ਸ਼ੇਅਰ ਕਰੋ",
+    "Domestic Market": "ਘਰੇਲੂ ਬਾਜ਼ਾਰ",
+    "IB (International Business & Exports)": "ਅੰਤਰਰਾਸ਼ਟਰੀ ਵਪਾਰ ਅਤੇ ਨਿਰਯਾਤ",
+    "Regulatory & Food Safety": "ਰੈਗੂਲੇਟਰੀ ਅਤੇ ਭੋਜਨ ਸੁਰੱਖਿਆ",
+    "All Bulletins (All India)": "ਸਾਰੇ ਬੁਲੇਟਿਨ"
+  }
+};
+
 export default function Home() {
   const [activeViewTab, setActiveViewTab] = useState<"intelligence" | "map">("intelligence");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
@@ -79,23 +191,24 @@ export default function Home() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
 
+  const t = (text: string): string => {
+    if (selectedLanguage === "English") return text;
+    return TRANSLATIONS[selectedLanguage]?.[text] || text;
+  };
+
   useEffect(() => {
     async function fetchNews() {
       setLoading(true);
       setFetchError(null);
       try {
-        console.log("Attempting to fetch documents from Firestore collection 'bulletins'...");
         let snapshot = await getDocs(query(collection(db, "bulletins"), limit(100)));
         
         if (snapshot.empty) {
-          console.warn("Collection 'bulletins' returned 0 docs. Trying 'Bulletins'...");
           snapshot = await getDocs(query(collection(db, "Bulletins"), limit(100)));
         }
 
-        console.log(`Firestore Fetch Result Total Docs: ${snapshot.size}`);
-
         if (snapshot.empty) {
-          setFetchError("Collection 'bulletins' / 'Bulletins' returned 0 documents. Check if your documents exist under the correct collection name in Firebase.");
+          setFetchError("Collection 'bulletins' / 'Bulletins' returned 0 documents.");
           setArticles([]);
           setLoading(false);
           return;
@@ -215,8 +328,13 @@ export default function Home() {
   const executiveInsightsSummary = useMemo(() => {
     if (articles.length === 0) return "No critical market disruptions reported in the active collection.";
     const titles = articles.slice(0, 3).map((a) => a.title).join("; ");
-    return `Synthesis of ${articles.length} active updates: Key developments across regional hubs indicate dynamic pricing, export compliance checks, and raw material safety audits. Highlights: ${titles}`;
-  }, [articles]);
+    let text = `Synthesis of ${articles.length} active updates: Key developments across regional hubs indicate dynamic pricing, export compliance checks, and raw material safety audits. Highlights: ${titles}`;
+    
+    if (selectedLanguage !== "English") {
+      text = `[${selectedLanguage} Translation Mode Active] ${text}`;
+    }
+    return text;
+  }, [articles, selectedLanguage]);
 
   const handleWhatsAppShare = (title: string, link?: string) => {
     const text = encodeURIComponent(`*FMCG Executive Bulletin:* ${title}\nRead detail: ${link || "https://fmcgdesk.web.app"}`);
@@ -252,7 +370,7 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Global Controls & 10 Indian Languages */}
+        {/* Global Controls & 10 Indian Languages Selector */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-2">
             <span className="text-xs text-slate-400">🌐</span>
@@ -339,7 +457,7 @@ export default function Home() {
                 : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700"
             }`}
           >
-            ● All Bulletins (All India)
+            ● {t("All Bulletins (All India)")}
           </button>
           <button
             onClick={() => setSelectedSubCategory("Domestic")}
@@ -349,7 +467,7 @@ export default function Home() {
                 : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700"
             }`}
           >
-            🇮🇳 Domestic Market
+            🇮🇳 {t("Domestic Market")}
           </button>
           <button
             onClick={() => setSelectedSubCategory("Export")}
@@ -359,7 +477,7 @@ export default function Home() {
                 : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700"
             }`}
           >
-            🚢 IB (International Business & Exports)
+            🚢 {t("IB (International Business & Exports)")}
           </button>
           <button
             onClick={() => setSelectedSubCategory("Regulatory")}
@@ -369,7 +487,7 @@ export default function Home() {
                 : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700"
             }`}
           >
-            📜 Regulatory & Food Safety
+            📜 {t("Regulatory & Food Safety")}
           </button>
         </div>
       )}
@@ -377,20 +495,26 @@ export default function Home() {
       {/* AI Intelligence Header Banner */}
       {activeViewTab === "intelligence" && (
         <div className="max-w-7xl mx-auto mb-8 bg-slate-900/90 border border-emerald-900/60 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
-          <div className="flex items-center justify-between gap-4 mb-3">
+          <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
               <h3 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">
-                ✨ AI MARKET INSIGHTS <span className="text-slate-500 font-normal">| Deep Market Intelligence & Consumer Signals</span>
-                {selectedLanguage !== "English" && <span className="ml-2 text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded text-[10px]">🌐 Viewing in {selectedLanguage}</span>}
+                ✨ {t("AI MARKET INSIGHTS")} <span className="text-slate-500 font-normal">| Deep Market Intelligence & Consumer Signals</span>
               </h3>
             </div>
-            <span className="bg-emerald-950 text-emerald-300 border border-emerald-800/80 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-              Market Outlook: Bullish
-            </span>
+            <div className="flex items-center gap-2">
+              {selectedLanguage !== "English" && (
+                <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-wider font-mono">
+                  🌐 Viewing in {selectedLanguage}
+                </span>
+              )}
+              <span className="bg-emerald-950 text-emerald-300 border border-emerald-800/80 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                {t("Market Outlook")}: {t("Bullish")}
+              </span>
+            </div>
           </div>
           <p className="text-xs md:text-sm text-slate-200 leading-relaxed font-sans">
-            <strong className="text-emerald-400">Executive Summary:</strong> {executiveInsightsSummary}
+            <strong className="text-emerald-400">{t("Executive Summary")}:</strong> {executiveInsightsSummary}
           </p>
         </div>
       )}
@@ -453,13 +577,13 @@ export default function Home() {
                         onClick={() => setSelectedArticle(article)}
                         className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <span>Read Executive Bulletin</span> →
+                        <span>{t("Read Executive Bulletin")}</span> →
                       </button>
                       <button
                         onClick={() => handleWhatsAppShare(article.title, article.source_url)}
                         className="bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-[11px] font-semibold px-2.5 py-1 rounded-lg hover:bg-emerald-900 transition cursor-pointer"
                       >
-                        💬 Share
+                        💬 {t("Share")}
                       </button>
                     </div>
                   </div>
@@ -485,7 +609,7 @@ export default function Home() {
             <div className="border-b border-slate-800 pb-4 space-y-3 pr-10">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
-                  📍 {selectedArticle.region} Region • Executive Analysis
+                  📍 {selectedArticle.region} Region • Executive Analysis {selectedLanguage !== "English" && `(${selectedLanguage})`}
                 </span>
                 {getRiskBadge(selectedArticle.risk_level)}
               </div>
