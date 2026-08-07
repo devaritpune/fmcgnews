@@ -81,14 +81,20 @@ export default function Home() {
     async function fetchNews() {
       setLoading(true);
       try {
-        const newsRef = collection(db, "bulletins");
-        const q = query(newsRef, limit(100));
-        const snapshot = await getDocs(q);
+        // Try fetching from "bulletins" first
+        let snapshot = await getDocs(query(collection(db, "bulletins"), limit(100)));
+        
+        // Fallback: If empty, try capitalized "Bulletins"
+        if (snapshot.empty) {
+          console.warn("Collection 'bulletins' returned 0 docs. Trying 'Bulletins'...");
+          snapshot = await getDocs(query(collection(db, "Bulletins"), limit(100)));
+        }
+
+        console.log("Firestore Fetch Result Total Docs:", snapshot.size);
 
         let docs: Article[] = snapshot.docs.map((doc) => {
           const data = doc.data();
 
-          // Safely parse business_advisory whether stored as object or string
           let parsedAdvisory: BusinessAdvisory = {
             qa_compliance: data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
           };
@@ -354,7 +360,7 @@ export default function Home() {
             ) : articles.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-2">
                 <p className="text-base font-bold text-slate-200">No active bulletins found in Firebase bulletins collection.</p>
-                <p className="text-xs text-slate-500">Ensure scraper data is populated or switch region/sub-category filters.</p>
+                <p className="text-xs text-slate-500">Check your browser developer console (F12) to verify if Firestore returned size 0.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
