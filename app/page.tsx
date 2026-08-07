@@ -64,6 +64,7 @@ interface Article {
   risk_level?: string;
   business_advisory?: BusinessAdvisory;
   actionAdvisory?: string;
+  language?: string;
 }
 
 export default function Home() {
@@ -137,17 +138,58 @@ export default function Home() {
             key_takeaway: data.key_takeaway || data.actionAdvisory || "",
             risk_level: data.risk_level || data.riskLevel || "MEDIUM",
             business_advisory: parsedAdvisory,
+            language: data.language || "English",
           };
         });
 
-        // Apply Sub-Category Filters safely
+        // Apply Sub-Category Filters robustly across multiple fields
         if (selectedSubCategory !== "All") {
           docs = docs.filter((item) => {
-            const scope = (item.market_scope || "").toLowerCase();
+            const cat = (item.category || "").toLowerCase();
             const subCat = (item.sub_category || "").toLowerCase();
-            if (selectedSubCategory === "Domestic") return scope.includes("domestic") || item.region !== "International";
-            if (selectedSubCategory === "Export") return scope.includes("export") || scope.includes("ib") || scope.includes("international");
-            if (selectedSubCategory === "Regulatory") return subCat.includes("regulatory") || subCat.includes("compliance") || subCat.includes("safety");
+            const scope = (item.market_scope || "").toLowerCase();
+            const title = (item.title || "").toLowerCase();
+            const summary = (item.summary || "").toLowerCase();
+
+            if (selectedSubCategory === "Domestic") {
+              return (
+                scope.includes("domestic") ||
+                cat.includes("domestic") ||
+                subCat.includes("domestic") ||
+                (!scope.includes("export") && !scope.includes("international") && !scope.includes("ib"))
+              );
+            }
+            if (selectedSubCategory === "Export") {
+              return (
+                scope.includes("export") ||
+                scope.includes("ib") ||
+                scope.includes("international") ||
+                cat.includes("ib") ||
+                cat.includes("export") ||
+                cat.includes("international") ||
+                subCat.includes("export") ||
+                subCat.includes("ib") ||
+                title.includes("export") ||
+                title.includes("global") ||
+                title.includes("shipment")
+              );
+            }
+            if (selectedSubCategory === "Regulatory") {
+              return (
+                subCat.includes("regulatory") ||
+                subCat.includes("compliance") ||
+                subCat.includes("safety") ||
+                cat.includes("regulatory") ||
+                cat.includes("food safety") ||
+                scope.includes("regulatory") ||
+                title.includes("fssai") ||
+                title.includes("regulation") ||
+                title.includes("safety") ||
+                title.includes("compliance") ||
+                summary.includes("fssai") ||
+                summary.includes("compliance")
+              );
+            }
             return true;
           });
         }
@@ -340,6 +382,7 @@ export default function Home() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
               <h3 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">
                 ✨ AI MARKET INSIGHTS <span className="text-slate-500 font-normal">| Deep Market Intelligence & Consumer Signals</span>
+                {selectedLanguage !== "English" && <span className="ml-2 text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded text-[10px]">🌐 Viewing in {selectedLanguage}</span>}
               </h3>
             </div>
             <span className="bg-emerald-950 text-emerald-300 border border-emerald-800/80 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
