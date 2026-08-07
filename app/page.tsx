@@ -75,22 +75,30 @@ export default function Home() {
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
 
   useEffect(() => {
     async function fetchNews() {
       setLoading(true);
+      setFetchError(null);
       try {
-        // Try fetching from "bulletins" first
+        console.log("Attempting to fetch documents from Firestore collection 'bulletins'...");
         let snapshot = await getDocs(query(collection(db, "bulletins"), limit(100)));
         
-        // Fallback: If empty, try capitalized "Bulletins"
         if (snapshot.empty) {
           console.warn("Collection 'bulletins' returned 0 docs. Trying 'Bulletins'...");
           snapshot = await getDocs(query(collection(db, "Bulletins"), limit(100)));
         }
 
-        console.log("Firestore Fetch Result Total Docs:", snapshot.size);
+        console.log(`Firestore Fetch Result Total Docs: ${snapshot.size}`);
+
+        if (snapshot.empty) {
+          setFetchError("Collection 'bulletins' / 'Bulletins' returned 0 documents. Check if your documents exist under the correct collection name in Firebase.");
+          setArticles([]);
+          setLoading(false);
+          return;
+        }
 
         let docs: Article[] = snapshot.docs.map((doc) => {
           const data = doc.data();
@@ -150,8 +158,9 @@ export default function Home() {
         }
 
         setArticles(docs);
-      } catch (error) {
-        console.error("Error fetching bulletins:", error);
+      } catch (error: any) {
+        console.error("Detailed Firestore Fetch Error:", error);
+        setFetchError(error.message || "Failed to connect to Firebase database or permission denied.");
         setArticles([]);
       } finally {
         setLoading(false);
@@ -340,6 +349,13 @@ export default function Home() {
           <p className="text-xs md:text-sm text-slate-200 leading-relaxed font-sans">
             <strong className="text-emerald-400">Executive Summary:</strong> {executiveInsightsSummary}
           </p>
+        </div>
+      )}
+
+      {/* Diagnostic Alert Box if Fetch Error Occurs */}
+      {fetchError && (
+        <div className="max-w-7xl mx-auto mb-6 bg-red-950/80 border border-red-700 p-4 rounded-xl text-red-300 text-xs font-mono">
+          <strong>⚠️ Diagnostic Alert:</strong> {fetchError}
         </div>
       )}
 
