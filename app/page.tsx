@@ -37,6 +37,12 @@ const IndiaMap = dynamic(() => import("../components/IndiaMap"), {
   ),
 });
 
+interface BusinessAdvisory {
+  qa_compliance?: string;
+  supply_chain?: string;
+  export_strategy?: string;
+}
+
 interface Article {
   id: string;
   title: string;
@@ -56,11 +62,7 @@ interface Article {
   url?: string;
   key_takeaway?: string;
   risk_level?: string;
-  business_advisory?: {
-    qa_compliance?: string;
-    supply_chain?: string;
-    export_strategy?: string;
-  };
+  business_advisory?: BusinessAdvisory;
   actionAdvisory?: string;
 }
 
@@ -85,24 +87,42 @@ export default function Home() {
 
         let docs: Article[] = snapshot.docs.map((doc) => {
           const data = doc.data();
+
+          // Safely parse business_advisory whether stored as object or string
+          let parsedAdvisory: BusinessAdvisory = {
+            qa_compliance: data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
+          };
+
+          if (data.business_advisory) {
+            if (typeof data.business_advisory === "object") {
+              parsedAdvisory = {
+                qa_compliance: data.business_advisory.qa_compliance || data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
+                supply_chain: data.business_advisory.supply_chain,
+                export_strategy: data.business_advisory.export_strategy,
+              };
+            } else if (typeof data.business_advisory === "string") {
+              parsedAdvisory = {
+                qa_compliance: data.business_advisory,
+              };
+            }
+          }
+
           return {
             id: doc.id,
-            title: data.title || "",
+            title: data.title || data.headline || "Untitled Market Bulletin",
             category: data.category || "Spices & Pickles",
-            sub_category: data.sub_category || "",
-            market_scope: data.market_scope || "",
-            summary: data.summary || data.raw_desc || "",
-            full_content: data.full_content || data.summary || "",
-            region: data.region || "Pan-India",
-            published_at: data.published_at || data.timestamp || data.createdDate,
+            sub_category: data.sub_category || data.subcategory || "",
+            market_scope: data.market_scope || data.scope || "",
+            summary: data.summary || data.raw_desc || data.description || "",
+            full_content: data.full_content || data.summary || data.content || "",
+            region: data.region || data.hub || "Pan-India",
+            published_at: data.published_at || data.timestamp || data.createdDate || data.date,
             date: data.date || data.createdDate,
             source_name: data.source_name || data.source || "Market Desk",
             source_url: data.source_url || data.url || "",
             key_takeaway: data.key_takeaway || data.actionAdvisory || "",
             risk_level: data.risk_level || data.riskLevel || "MEDIUM",
-            business_advisory: data.business_advisory || {
-              qa_compliance: data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
-            },
+            business_advisory: parsedAdvisory,
           };
         });
 
@@ -126,6 +146,7 @@ export default function Home() {
         setArticles(docs);
       } catch (error) {
         console.error("Error fetching bulletins:", error);
+        setArticles([]);
       } finally {
         setLoading(false);
       }
