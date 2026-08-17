@@ -1,0 +1,43 @@
+name: Delete Bulletins (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'yes' to confirm deletion. Any other value will abort."
+        required: true
+        default: "no"
+      force_delete:
+        description: "Set 'true' to force delete even if project id check fails"
+        required: false
+        default: "false"
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Confirmed?
+        id: confirm
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "yes" ]; then
+            echo "Deletion not confirmed. Aborting.";
+            exit 1;
+          fi
+          echo "Confirmed deletion request.";
+
+      - name: Run deletion script
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}
+          CONFIRM_DELETE: true
+          FORCE_DELETE: ${{ github.event.inputs.force_delete }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          node scripts/delete_bulletins.mjs

@@ -10,18 +10,35 @@ let serviceAccount = null;
 let canRun = true;
 
 if (!getApps().length) {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  // Accept several possible env names for service account JSON (repo uses FIREBASE_SERVICE_ACCOUNT_FMCGDESK)
+  const possibleEnvNames = [
+    "FIREBASE_SERVICE_ACCOUNT_KEY",
+    "FIREBASE_SERVICE_ACCOUNT_FMCGDESK",
+    "FIREBASE_SERVICE_ACCOUNT",
+    "FIREBASE_SERVICE_ACCOUNT_JSON",
+  ];
+
+  let foundJson = null;
+  for (const n of possibleEnvNames) {
+    if (process.env[n]) {
+      foundJson = process.env[n];
+      console.log(`Found service account in env var: ${n}`);
+      break;
+    }
+  }
+
+  if (foundJson) {
     try {
-      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      serviceAccount = JSON.parse(foundJson);
     } catch (e) {
-      console.error("FIREBASE_SERVICE_ACCOUNT_KEY invalid JSON:", e);
+      console.error("Service account env var contains invalid JSON:", e);
       canRun = false;
     }
   } else {
     try {
       serviceAccount = require("../serviceAccountKey.json");
     } catch (e) {
-      console.error("Missing Firebase service account key. Provide FIREBASE_SERVICE_ACCOUNT_KEY or serviceAccountKey.json in repo root.");
+      console.error("Missing Firebase service account key. Provide a service account JSON via env or serviceAccountKey.json in repo root.");
       canRun = false;
     }
   }
