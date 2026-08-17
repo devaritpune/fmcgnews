@@ -26,4 +26,28 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}[cite: 4]
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}[cite: 4]
-        run: node scripts/fetchNews.mjs[cite: 4]
+        run: |
+          echo "Starting scraper with retry logic..."
+          MAX_RETRIES=3
+          ATTEMPT=0
+          rm -f scraper.log || true
+          while [ $ATTEMPT -lt $MAX_RETRIES ]; do
+            ATTEMPT=$((ATTEMPT+1))
+            echo "Attempt $ATTEMPT of $MAX_RETRIES"
+            if node scripts/fetchNews.mjs > scraper.log 2>&1; then
+              echo "Scraper succeeded on attempt $ATTEMPT"
+              exit 0
+            else
+              echo "Scraper failed on attempt $ATTEMPT. Retrying after backoff..."
+              sleep $((ATTEMPT * 5))
+            fi
+          done
+          echo "All attempts failed. Exiting with non-zero so workflow marks failure and logs can be uploaded."
+          exit 1
+
+      - name: Upload Scraper Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-scraper-logs
+          path: scraper.log
