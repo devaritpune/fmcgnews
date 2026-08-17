@@ -1,118 +1,79 @@
-import dotenv from "dotenv";
-import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { createRequire } from "module";
 
-dotenv.config();
-const require = createRequire(import.meta.url);
+/**
+ * Deletes all documents within a Firestore collection in batches.
+ * @param {FirebaseFirestore.Firestore} db The Firestore database instance.
+  const collectionRef = db.collection(collectionPath);
+  const query = collectionRef.orderBy("__name__").limit(batchSize);
 
-let serviceAccount = null;
-let canRun = true;
-
-if (!getApps().length) {
-  // Accept several possible env names for service account JSON (repo uses FIREBASE_SERVICE_ACCOUNT_FMCGDESK)
-  const possibleEnvNames = [
-    "FIREBASE_SERVICE_ACCOUNT_KEY",
-    "FIREBASE_SERVICE_ACCOUNT_FMCGDESK",
-    "FIREBASE_SERVICE_ACCOUNT",
-    "FIREBASE_SERVICE_ACCOUNT_JSON",
-  ];
-
-  let foundJson = null;
-  for (const n of possibleEnvNames) {
-    if (process.env[n]) {
-      foundJson = process.env[n];
-      console.log(`Found service account in env var: ${n}`);
-      break;
-    }
-  }
-
-  if (foundJson) {
-    try {
-      serviceAccount = JSON.parse(foundJson);
-    } catch (e) {
-      console.error("Service account env var contains invalid JSON:", e);
-      canRun = false;
-    }
-  } else {
-    try {
-      serviceAccount = require("../serviceAccountKey.json");
-    } catch (e) {
-      console.error("Missing Firebase service account key. Provide a service account JSON via env or serviceAccountKey.json in repo root.");
-      canRun = false;
-    }
-  }
-
-  if (serviceAccount) {
-    try {
-      initializeApp({ credential: cert(serviceAccount) });
-    } catch (e) {
-      console.error("Failed to initialize Firebase Admin SDK:", e);
-      canRun = false;
-    }
-  }
+  return new Promise((resolve, reject) => {
+    deleteQueryBatch(db, query, resolve).catch(reject);
+  });
 }
 
-const db = canRun ? getFirestore() : null;
+/**
+ * Recursively deletes documents in a batch and schedules the next batch.
+ * @param {FirebaseFirestore.Firestore} db The Firestore database instance.
+ * @param {FirebaseFirestore.Query} query The query for the batch of documents to delete.
+async function deleteQueryBatch(db, query, resolve) {
+  const snapshot = await query.get();
 
-async function dryRun() {
-  console.log("Running dry-run: counting documents in 'bulletins'...");
-  const snapshot = await db.collection("bulletins").get();
-  console.log(`Found ${snapshot.size} documents in 'bulletins'.`);
-  if (snapshot.size > 0) {
-    console.log("Sample doc ids:");
-    snapshot.docs.slice(0, 10).forEach((d) => console.log(` - ${d.id}`));
+  if (snapshot.size === 0) {
+    // When there are no documents left, we are done.
+    resolve();
+    return;
   }
+
+  // Delete documents in a batch
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  // Recurse on the next process tick, to avoid hitting stack limits.
+  process.nextTick(() => {
+    deleteQueryBatch(db, query, resolve);
+  });
 }
 
-async function deleteAll() {
-  console.log("Deleting all documents in 'bulletins' collection in batches of 500...");
-  const batchSize = 500;
-  let totalRemoved = 0;
-
-  while (true) {
-    const snapshot = await db.collection("bulletins").limit(batchSize).get();
-    if (snapshot.empty) break;
-
-    const batch = db.batch();
-    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    totalRemoved += snapshot.size;
-    console.log(`Deleted batch of ${snapshot.size} documents. Total removed: ${totalRemoved}`);
-  }
-
-  console.log(`Done. Total documents deleted: ${totalRemoved}`);
-}
-
-(async () => {
-  if (!db) {
-    console.error("Firestore client not available. Exiting.");
-    process.exit(1);
-  }
-
-  const confirm = (process.env.CONFIRM_DELETE || "false").toLowerCase();
-  if (confirm !== "true") {
-    console.log("CONFIRM_DELETE is not set to 'true' — performing dry-run only. To delete, set CONFIRM_DELETE=true in env.");
-    await dryRun();
-    process.exit(0);
-  }
-
-  // Safety: require an explicit environment variable and non-production project check if possible
-  const projectId = process.env.FIREBASE_PROJECT_ID || (serviceAccount && serviceAccount.project_id) || "";
-  console.log(`Project detected: ${projectId}`);
-
-  // Prevent accidental deletion of unknown/production projects unless FORCE_DELETE env is set
-  const allow = process.env.FORCE_DELETE === "true" || projectId.includes("fmcgdesk");
-  if (!allow) {
-    console.error("Refusing to delete: project appears to be non-target or FORCE_DELETE not set. Set FORCE_DELETE=true to override.");
-    process.exit(1);
-  }
-
+async function main() {
   try {
-    await deleteAll();
+    // Safety Check 1: Ensure deletion is explicitly confirmed.
+    if (process.env.CONFIRM_DELETE !== "true") {
+      console.error("❌ ABORTING: Deletion was not confirmed. Set CONFIRM_DELETE=true to proceed.");
+      process.exit(1);
+    }
+
+    // Safety Check 2: Ensure the service account key is present.
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      console.error("❌ ABORTING: FIREBASE_SERVICE_ACCOUNT_KEY secret not found.");
+      process.exit(1);
+    }
+
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+
+    // Safety Check 3: Match Project ID unless forced.
+    if (process.env.FORCE_DELETE !== "true" && serviceAccount.project_id !== process.env.FIREBASE_PROJECT_ID) {
+      console.error(`❌ ABORTING: Project ID mismatch! Expected '${process.env.FIREBASE_PROJECT_ID}' but service account is for '${serviceAccount.project_id}'.`);
+      process.exit(1);
+    }
+
+    console.log(`✅ Initializing connection to Firebase project: ${serviceAccount.project_id}`);
+    initializeApp({ credential: cert(serviceAccount) });
+    const db = getFirestore();
+
+    console.log("🔥 Starting deletion of all documents in 'bulletins' collection...");
+    await deleteCollection(db, "bulletins");
+    console.log("✅ Successfully deleted all documents from 'bulletins' collection.");
+
     process.exit(0);
-  } catch (e) {
-    console.error("Error during deletion:", e);
+  } catch (error) {
+    console.error("❌ An unexpected error occurred:", error);
     process.exit(1);
   }
-})();
+}
+
+main();
+
