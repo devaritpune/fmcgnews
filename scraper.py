@@ -59,248 +59,27 @@ else:
   print("⚠️ GEMINI_API_KEY not found in .env — using fallback smart summaries.")
 
 
-# 4. MASTER KEYWORD GROUPS (Companies + Products + Commodities + Supply Chain)
-COMPANY_KEYWORDS = [
-    "Desai Brothers",
-    "Mother's Recipe",
-    "Suhana Masala",
-    "Everest Foods",
-    "Everest Spices",
-    "MDH",
-    "Nestle India",
-    "ITC Foods",
-    "Aashirvaad",
-    "Sunrise Spices",
-    "Tata Sampann",
-    "Dabur",
-    "Badshah Masala",
-    "MTR Foods",
-    "Eastern Condiments",
-    "Recipewell",
-    "Aachi Masala",
-    "Sakthi Masala",
-    "Priya Foods",
-    "Goldiee Masale",
-    "Ashok Masale",
-    "Cookme",
-    "JK Spices",
-]
+# 4. MASTER KEYWORD GROUPS (Broader search terms to guarantee RSS matches)
+SEARCH_QUERY_STRING = "spices OR MDH OR Everest OR turmeric OR cumin OR FMCG OR food processing"
 
-PRODUCT_KEYWORDS = [
-    "spices",
-    "pickles",
-    "jeera",
-    "cumin",
-    "turmeric",
-    "haldi",
-    "coriander",
-    "dhania",
-    "red chilli",
-    "cardamom",
-    "black pepper",
-    "hing",
-    "asafoetida",
-    "garam masala",
-    "blended spices",
-    "mango pickle",
-    "ginger garlic paste",
-    "chutney",
-    "ready to cook",
-    "curry paste",
-]
-
-SUPPLY_CHAIN_KEYWORDS = [
-    "procurement",
-    "price hike",
-    "mandi price",
-    "APMC arrivals",
-    "export ban",
-    "FSSAI",
-    "Ethylene Oxide",
-    "crop yield",
-    "unseasonal rain",
-    "input cost",
-    "packaging cost",
-]
-
-# Combined search query string for Google News RSS (Fixed string quote formatting)
-companies_part = " OR ".join(f'"{c}"' for c in COMPANY_KEYWORDS[:8])
-products_part = " OR ".join(PRODUCT_KEYWORDS[:10])
-supply_part = " OR ".join(SUPPLY_CHAIN_KEYWORDS[:6])
-SEARCH_QUERY_STRING = f"({companies_part} OR {products_part}) AND ({supply_part})"
+# How many articles to take per outlet (8 outlets * 10 = 80 articles)
+PER_OUTLET_ITEM_LIMIT = 10
 
 
-# 5. SOURCE MATRIX: 40 Target Outlets across North, South, West, East
+# 5. SOURCE MATRIX: Target Outlets across North, South, West, East
 TARGET_OUTLETS = [
-    # North Region (Newspapers + Magazines)
-    {
-        "name": "Economic Times",
-        "region": "North",
-        "domain": "economictimes.indiatimes.com",
-    },
-    {
-        "name": "Financial Express North",
-        "region": "North",
-        "domain": "financialexpress.com",
-    },
-    {
-        "name": "Business Standard North",
-        "region": "North",
-        "domain": "business-standard.com",
-    },
+    {"name": "Economic Times", "region": "North", "domain": "economictimes.indiatimes.com"},
+    {"name": "Financial Express", "region": "North", "domain": "financialexpress.com"},
+    {"name": "Business Standard", "region": "North", "domain": "business-standard.com"},
     {"name": "LiveMint", "region": "North", "domain": "livemint.com"},
-    {
-        "name": "Tribune Business",
-        "region": "North",
-        "domain": "tribuneindia.com",
-    },
-    {"name": "FNB News North", "region": "North", "domain": "fnbnews.com"},
-    {
-        "name": "Outlook Business",
-        "region": "North",
-        "domain": "outlookbusiness.com",
-    },
-    {
-        "name": "BW Hotelier/FMCG",
-        "region": "North",
-        "domain": "businessworld.in",
-    },
-    {"name": "Policy Circle", "region": "North", "domain": "policycircle.org"},
-    {
-        "name": "Indian Chemical News",
-        "region": "North",
-        "domain": "indianchemicalnews.com",
-    },
-    # South Region (Newspapers + Magazines)
-    {
-        "name": "The Hindu BusinessLine",
-        "region": "South",
-        "domain": "thehindubusinessline.com",
-    },
-    {
-        "name": "Deccan Herald Business",
-        "region": "South",
-        "domain": "deccanherald.com",
-    },
-    {
-        "name": "Financial Express South",
-        "region": "South",
-        "domain": "financialexpress.com",
-    },
-    {
-        "name": "Telangana Today",
-        "region": "South",
-        "domain": "telanganatoday.com",
-    },
-    {
-        "name": "Deccan Chronicle",
-        "region": "South",
-        "domain": "deccanchronicle.com",
-    },
-    {
-        "name": "Processed Food Industry",
-        "region": "South",
-        "domain": "pfi-online.com",
-    },
-    {"name": "FnB News South", "region": "South", "domain": "fnbnews.com"},
-    {
-        "name": "Commodity Online",
-        "region": "South",
-        "domain": "commodityonline.com",
-    },
-    {
-        "name": "Beverage & Food World",
-        "region": "South",
-        "domain": "bfworld.in",
-    },
-    {"name": "FSSAI Updates", "region": "South", "domain": "fssai.gov.in"},
-    # West Region (Newspapers + Magazines)
-    {
-        "name": "Financial Express Mumbai",
-        "region": "West",
-        "domain": "financialexpress.com",
-    },
-    {
-        "name": "Business Standard West",
-        "region": "West",
-        "domain": "business-standard.com",
-    },
-    {
-        "name": "Navbharat Times Commerce",
-        "region": "West",
-        "domain": "navbharattimes.indiatimes.com",
-    },
-    {
-        "name": "Gujarat Samachar Business",
-        "region": "West",
-        "domain": "gujaratsamachar.com",
-    },
-    {"name": "Sakal Money", "region": "West", "domain": "esakal.com"},
-    {
-        "name": "Entrepreneur India",
-        "region": "West",
-        "domain": "entrepreneur.com",
-    },
-    {
-        "name": "Progressive Grocer India",
-        "region": "West",
-        "domain": "indiaretailing.com",
-    },
-    {"name": "Food & Beverage News", "region": "West", "domain": "fnbnews.com"},
-    {
-        "name": "Food Processing India",
-        "region": "West",
-        "domain": "foodprocessingindia.gov.in",
-    },
-    {
-        "name": "India Retailing",
-        "region": "West",
-        "domain": "indiaretailing.com",
-    },
-    # East Region (Newspapers + Magazines)
-    {
-        "name": "Telegraph Business",
-        "region": "East",
-        "domain": "telegraphindia.com",
-    },
-    {
-        "name": "Statesman Economy",
-        "region": "East",
-        "domain": "thestatesman.com",
-    },
-    {
-        "name": "Assam Tribune Business",
-        "region": "East",
-        "domain": "assamtribune.com",
-    },
-    {
-        "name": "Odisha Post Business",
-        "region": "East",
-        "domain": "orissapost.com",
-    },
-    {"name": "Millennium Post", "region": "East", "domain": "millenniumpost.in"},
-    {
-        "name": "Spice Board India Journal",
-        "region": "East",
-        "domain": "indianspices.com",
-    },
-    {
-        "name": "Agro Spectrum",
-        "region": "East",
-        "domain": "agrospectrumindia.com",
-    },
-    {
-        "name": "Commodity India East",
-        "region": "East",
-        "domain": "commodityindia.com",
-    },
-    {"name": "FnB News East", "region": "East", "domain": "fnbnews.com"},
-    {"name": "Indian Food Industry", "region": "East", "domain": "afsti.org"},
+    {"name": "The Hindu BusinessLine", "region": "South", "domain": "thehindubusinessline.com"},
+    {"name": "Deccan Herald", "region": "South", "domain": "deccanherald.com"},
+    {"name": "Telegraph India", "region": "East", "domain": "telegraphindia.com"},
+    {"name": "Agro Spectrum", "region": "East", "domain": "agrospectrumindia.com"},
 ]
 
 
 def clean_text(raw_text):
-  """Strips CDATA tags, HTML tags, and extra whitespace."""
   if not raw_text:
     return ""
   text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL)
@@ -309,7 +88,6 @@ def clean_text(raw_text):
 
 
 def get_existing_bulletin_data(db_client):
-  """Indexes existing URLs and Titles in Firestore to prevent duplicates."""
   if not db_client:
     return 0, set(), set()
 
@@ -335,15 +113,8 @@ def get_existing_bulletin_data(db_client):
             highest_seq = seq_num
 
     if highest_seq > 0:
-      print(
-          "ℹ️ Found existing bulletins for today. Highest sequence:"
-          f" {highest_seq:03d}"
-      )
-    print(
-        f"ℹ️ Indexed {len(existing_urls)} existing articles in Firestore for"
-        " deduplication."
-    )
-
+      print(f"ℹ️ Found existing bulletins for today. Highest sequence: {highest_seq:03d}")
+    print(f"ℹ️ Indexed {len(existing_urls)} existing articles in Firestore for deduplication.")
   except Exception as e:
     print(f"⚠️ Could not fetch existing records for deduplication: {e}")
 
@@ -351,22 +122,17 @@ def get_existing_bulletin_data(db_client):
 
 
 def generate_document_id(sequence_num):
-  """Generates standard Document ID: ART_YYYY_MM_DD_XXX"""
   date_str = datetime.now().strftime("%Y_%m_%d")
   return f"ART_{date_str}_{sequence_num:03d}"
 
 
 def analyze_with_gemini(headline, description):
-  """Uses Gemini to generate Executive Summary, Category, and Action Advisory."""
   if not ai_client:
     return {
         "category": "🌶️ Spices & Pickles",
         "riskLevel": "MEDIUM",
         "summary": f"Key update regarding {headline[:60]}...",
-        "actionAdvisory": (
-            "Review regional supplier contracts and adjust safety stock"
-            " buffers."
-        ),
+        "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
     }
 
   prompt = f"""
@@ -392,12 +158,10 @@ def analyze_with_gemini(headline, description):
         contents=prompt,
     )
     text = response.text.strip()
-
     if text.startswith("```"):
       text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
       text = re.sub(r"\n?```$", "", text)
       text = text.strip()
-
     return json.loads(text)
   except Exception as e:
     print(f"   ⚠️ Gemini AI API Error Details: {e}")
@@ -405,22 +169,17 @@ def analyze_with_gemini(headline, description):
         "category": "🌶️ Spices & Pickles",
         "riskLevel": "MEDIUM",
         "summary": description[:150] if description else headline,
-        "actionAdvisory": (
-            "Monitor regional market movements and adjust procurement buffers."
-        ),
+        "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
     }
 
 
 def fetch_targeted_outlet_news(outlet):
-  """Constructs a Google News Search RSS feed query for a target outlet domain."""
   headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
   articles = []
-
-  # Format: site:domain.com (Keywords)
   query = f'site:{outlet["domain"]} ({SEARCH_QUERY_STRING})'
   encoded_query = urllib.parse.quote(query)
 
-  # FIXED: Removed Markdown brackets and redundant base URL duplication
+  # Google News RSS search URL
   rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
 
   try:
@@ -428,21 +187,17 @@ def fetch_targeted_outlet_news(outlet):
     if res.status_code == 200:
       soup = BeautifulSoup(res.content, "xml")
       items = soup.find_all("item")
+      
+      print(f"   -> RSS fetched for {outlet['name']}: {len(items)} items found.")
 
-      for item in items[:2]:  # Limit top 2 articles per target outlet
+      for item in items[:PER_OUTLET_ITEM_LIMIT]:
         title_elem = item.find("title")
         link_elem = item.find("link")
         desc_elem = item.find("description")
 
-        title = (
-            clean_text(title_elem.text)
-            if title_elem and title_elem.text
-            else ""
-        )
+        title = clean_text(title_elem.text) if title_elem and title_elem.text else ""
         link = link_elem.text.strip() if link_elem and link_elem.text else ""
-        desc = (
-            clean_text(desc_elem.text) if desc_elem and desc_elem.text else ""
-        )
+        desc = clean_text(desc_elem.text) if desc_elem and desc_elem.text else ""
 
         if title:
           articles.append({
@@ -452,32 +207,22 @@ def fetch_targeted_outlet_news(outlet):
               "source": outlet["name"],
               "region": outlet["region"],
           })
+    else:
+      print(f"   ⚠️ HTTP Status {res.status_code} received for {outlet['name']}")
   except Exception as e:
-    print(f"   ⚠️ Could not fetch query for {outlet['name']}: {e}")
+    print(f"   ⚠️ Error fetching query for {outlet['name']}: {e}")
 
   return articles
 
 
 def run_scraper():
-  print(
-      "\n🚀 Starting Comprehensive FMCG Market Scraper (40 Outlets +"
-      " Spices/Pickles Matrix)...\n"
-  )
+  print("\n🚀 Starting Comprehensive FMCG Market Scraper (Today's Date Stamp)...\n")
 
-  current_sequence, existing_urls, existing_titles = get_existing_bulletin_data(
-      db
-  )
+  current_sequence, existing_urls, existing_titles = get_existing_bulletin_data(db)
   processed_count = 0
   skipped_count = 0
 
-  print(
-      f"📌 Matrix Scope: Searching {len(TARGET_OUTLETS)} Target Publications"
-      " across North, South, West, East..."
-  )
-  print(
-      "🔑 Keywords Loaded: Spices, Pickles, Desai Brothers, Mother's Recipe,"
-      " Suhana, Everest, MDH, ITC, Nestle, APMC, ETO.\n"
-  )
+  print(f"📌 Matrix Scope: Searching {len(TARGET_OUTLETS)} Target Publications...\n")
 
   for outlet in TARGET_OUTLETS:
     print(f"🔍 Searching {outlet['name']} ({outlet['region']} Region)...")
@@ -487,10 +232,7 @@ def run_scraper():
       clean_url = article["url"].strip().lower()
       clean_title = article["title"].strip().lower()
 
-      # Deduplication Check
-      if (clean_url and clean_url in existing_urls) or (
-          clean_title and clean_title in existing_titles
-      ):
+      if (clean_url and clean_url in existing_urls) or (clean_title and clean_title in existing_titles):
         skipped_count += 1
         print(f"   ⏩ Duplicate Skipped: {article['title'][:50]}...")
         continue
@@ -501,7 +243,6 @@ def run_scraper():
       doc_id = generate_document_id(current_sequence)
       print(f"   📄 Processing [{doc_id}]: {article['title'][:60]}...")
 
-      # Gemini AI Analysis with error handling block and rate-limit pause
       try:
         ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
       except Exception as e:
@@ -513,7 +254,6 @@ def run_scraper():
             "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
         }
 
-      # Store Payload
       doc_payload = {
           "title": article["title"],
           "source": article["source"],
@@ -523,11 +263,7 @@ def run_scraper():
           "summary": ai_data.get("summary", ""),
           "actionAdvisory": ai_data.get("actionAdvisory", ""),
           "url": article["url"],
-          "timestamp": (
-              firestore.SERVER_TIMESTAMP
-              if db
-              else datetime.now(timezone.utc).isoformat()
-          ),
+          "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
           "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       }
 
@@ -543,8 +279,7 @@ def run_scraper():
       if clean_title:
         existing_titles.add(clean_title)
 
-      # Pause for 12-15 seconds between requests to stay safely under the free tier 5 RPM limit[cite: 2]
-      time.sleep(12)
+      time.sleep(2)
 
   print("\n🎉 Scraper Execution Complete!")
   print(f"   ✨ Total New Relevant Bulletins Processed: {processed_count}")
