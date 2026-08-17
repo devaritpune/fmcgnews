@@ -41,11 +41,17 @@ const parser = new Parser();
 // 2. GEMINI AI INITIALIZATION
 // ---------------------------------------------------------------------------
 const apiKey = process.env.GEMINI_API_KEY;
+let genAI = null;
 if (!apiKey) {
-  console.error("❌ Missing GEMINI_API_KEY environment variable!");
-  process.exit(1);
+  console.warn("⚠️ GEMINI_API_KEY not set — running ingestion without AI summarization. Will use feed snippets as fallback.");
+} else {
+  try {
+    genAI = new GoogleGenerativeAI(apiKey);
+  } catch (e) {
+    console.warn("⚠️ Failed to initialize Gemini AI client:", e);
+    genAI = null;
+  }
 }
-const genAI = new GoogleGenerativeAI(apiKey);
 
 // ---------------------------------------------------------------------------
 // 3. TARGETED RSS QUERIES (Domestic + International Business/Export Focus)
@@ -117,25 +123,45 @@ Respond ONLY with a valid JSON object matching this structure (no markdown forma
 `;
 
         try {
-          const result = await model.generateContent(prompt);
-          const rawText = result.response.text().trim();
-          const cleanJson = rawText.replace(/```json|```/g, "").trim();
-          const aiData = JSON.parse(cleanJson);
+          let aiData = null;
+          if (genAI) {
+            try {
+              const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+              const result = await model.generateContent(prompt);
+              const rawText = result.response.text().trim();
+              const cleanJson = rawText.replace(/```json|```/g, "").trim();
+              aiData = JSON.parse(cleanJson);
+            } catch (aiErr) {
+              console.warn(` ⚠️ AI Processing Error for "${item.title}":`, aiErr);
+              aiData = null;
+            }
+          }
 
           const publishedDate = item.pubDate ? new Date(item.pubDate) : new Date();
+
+          // Fallback values when AI is not available
+          const category = (aiData && aiData.category) || "Spices & Pickles";
+          const sub_category = (aiData && aiData.sub_category) || "Domestic Market";
+          const market_scope = (aiData && aiData.market_scope) || "Domestic";
+          const target_regions = (aiData && aiData.target_regions) || ["Pan-India"];
+          const region = (aiData && aiData.origin_region) || "Pan-India";
+          const summary = (aiData && aiData.summary_en) || item.contentSnippet || item.title;
+          const key_takeaway = (aiData && aiData.key_takeaway) || "";
+          const regulatory_update = Boolean(aiData && aiData.regulatory_update);
+          const sentiment = (aiData && aiData.sentiment) || "Neutral";
 
           // Write Document to Firestore
           await db.collection("news_articles").add({
             title: item.title,
-            category: aiData.category || "Spices & Pickles",
-            sub_category: aiData.sub_category || "Domestic Market",
-            market_scope: aiData.market_scope || "Domestic",
-            target_regions: aiData.target_regions || ["Pan-India"],
-            region: aiData.origin_region || "Pan-India",
-            summary: aiData.summary_en || item.contentSnippet || item.title,
-            key_takeaway: aiData.key_takeaway || "",
-            regulatory_update: Boolean(aiData.regulatory_update),
-            sentiment: aiData.sentiment || "Neutral",
+            category,
+            sub_category,
+            market_scope,
+            target_regions,
+            region,
+            summary,
+            key_takeaway,
+            regulatory_update,
+            sentiment,
             source_name: "Google News / FMCG Desk",
             source_url: item.link,
             published_at: publishedDate.toISOString(),
@@ -144,9 +170,9 @@ Respond ONLY with a valid JSON object matching this structure (no markdown forma
           });
 
           totalSaved++;
-          console.log(` ✅ Saved [${aiData.sub_category}]: ${item.title.substring(0, 65)}...`);
-        } catch (aiErr) {
-          console.error(` ⚠️ AI Processing Error for "${item.title}":`, aiErr);
+          console.log(` ✅ Saved [${sub_category}]: ${item.title.substring(0, 65)}...`);
+        } catch (err) {
+          console.error(` ❌ Failed to save article "${item.title}":`, err);
         }
       }
     } catch (rssErr) {
