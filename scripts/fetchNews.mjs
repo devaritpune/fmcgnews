@@ -77,6 +77,33 @@ const SEARCH_QUERIES = [
   'India FMCG consumer trends distribution retail when:15d',
 ];
 
+// STRICT KEYWORD SET for Category: Spices & Pickles
+const TARGET_KEYWORDS = [
+  "spice",
+  "spices",
+  "pickle",
+  "pickles",
+  "turmeric",
+  "cumin",
+  "masala",
+  "mdh",
+  "everest",
+  "powdered spice",
+  "ground spice",
+  "spice company",
+  "spice mill",
+  "masaledar",
+  "achaar",
+  "pickle plant",
+  "spice exports",
+];
+
+function matchesTargetKeywords(text) {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return TARGET_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 // ---------------------------------------------------------------------------
 // 4. MAIN SCRAPING AND INGESTION PIPELINE
 // ---------------------------------------------------------------------------
@@ -86,6 +113,7 @@ async function runDailyIngestion() {
 
   let totalSaved = 0;
   let totalSkipped = 0;
+  let totalFiltered = 0;
   let totalErrors = 0;
 
   for (const searchQuery of SEARCH_QUERIES) {
@@ -100,6 +128,14 @@ async function runDailyIngestion() {
 
       for (const item of feed.items) {
         if (!item.link || !item.title) continue;
+
+        // Strict topical filter: only process articles that mention our target keywords
+        const checkText = `${item.title || ""} ${item.contentSnippet || ""} ${item.content || ""}`;
+        if (!matchesTargetKeywords(checkText)) {
+          totalFiltered++;
+          // skip non-target articles
+          continue;
+        }
 
         // Deduplication Check: Skip if article URL already exists in Firestore
         const existingDoc = await db
@@ -194,9 +230,9 @@ Respond ONLY with a valid JSON object matching this structure (no markdown forma
     }
   }
 
-  console.log(`\n🎉 Ingestion Complete! ${totalSaved} new articles saved, ${totalSkipped} duplicates skipped. Errors: ${totalErrors}`);
+  console.log(`\n🎉 Ingestion Complete! ${totalSaved} new articles saved, ${totalSkipped} duplicates skipped, ${totalFiltered} non-target articles filtered out. Errors: ${totalErrors}`);
 
-  return { totalSaved, totalSkipped, totalErrors };
+  return { totalSaved, totalSkipped, totalFiltered, totalErrors };
 }
 
 // Run and ensure graceful exit. Catch unexpected errors so GitHub Action doesn't fail intermittently.
