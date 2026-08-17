@@ -86,6 +86,7 @@ async function runDailyIngestion() {
 
   let totalSaved = 0;
   let totalSkipped = 0;
+  let totalErrors = 0;
 
   for (const searchQuery of SEARCH_QUERIES) {
     console.log(`\n🔍 Scraping Query: "${searchQuery}"`);
@@ -189,10 +190,13 @@ Respond ONLY with a valid JSON object matching this structure (no markdown forma
       }
     } catch (rssErr) {
       console.error(`❌ Error parsing RSS feed for query "${searchQuery}":`, rssErr);
+      totalErrors++;
     }
   }
 
-  console.log(`\n🎉 Ingestion Complete! ${totalSaved} new articles saved, ${totalSkipped} duplicates skipped.`);
+  console.log(`\n🎉 Ingestion Complete! ${totalSaved} new articles saved, ${totalSkipped} duplicates skipped. Errors: ${totalErrors}`);
+
+  return { totalSaved, totalSkipped, totalErrors };
 }
 
 // Run and ensure graceful exit. Catch unexpected errors so GitHub Action doesn't fail intermittently.
@@ -204,10 +208,48 @@ Respond ONLY with a valid JSON object matching this structure (no markdown forma
       process.exit(0);
     }
 
-    await runDailyIngestion();
+    const result = await runDailyIngestion();
+
+    // Update ingestion status in Firestore for monitoring
+    try {
+      if (db) {
+        const runDoc = db.collection("ingestion_status").doc("last_run");
+        await runDoc.set({
+          timestamp: new Date().toISOString(),
+          saved: result?.totalSaved || 0,
+          skipped: result?.totalSkipped || 0,
+          errors: result?.totalErrors || 0,
+          status: "success",
+          run_id: process.env.GITHUB_RUN_ID || null,
+          commit: process.env.GITHUB_SHA || null,
+        });
+        console.log("✅ Updated ingestion_status/last_run in Firestore.");
+      }
+    } catch (e) {
+      console.warn("⚠️ Failed to write ingestion status to Firestore:", e);
+    }
+
     process.exit(0);
   } catch (err) {
     console.error("❌ Unhandled error during ingestion run:", err);
+    try {
+      if (db) {
+        const runDoc = db.collection("ingestion_status").doc("last_run");
+        await runDoc.set({
+          timestamp: new Date().toISOString(),
+          saved: 0,
+          skipped: 0,
+          errors: 1,
+          status: "failure",
+          errorMessage: String(err).slice(0, 1000),
+          run_id: process.env.GITHUB_RUN_ID || null,
+          commit: process.env.GITHUB_SHA || null,
+        });
+        console.log("✅ Wrote failure status to ingestion_status/last_run in Firestore.");
+      }
+    } catch (e) {
+      console.warn("⚠️ Failed to write failure status to Firestore:", e);
+    }
     // Exit 0 to avoid marking the entire workflow as failed for transient/script-level errors.
     process.exit(0);
   }
