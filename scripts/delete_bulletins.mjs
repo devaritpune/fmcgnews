@@ -4,9 +4,12 @@ import { getFirestore } from "firebase-admin/firestore";
 /**
  * Deletes all documents within a Firestore collection in batches.
  * @param {FirebaseFirestore.Firestore} db The Firestore database instance.
+ * @param {string} collectionPath The path to the collection to delete.
+ * @param {number} batchSize The number of documents to delete in each batch.
+ */
+async function deleteCollection(db, collectionPath, batchSize = 100) {
   const collectionRef = db.collection(collectionPath);
   const query = collectionRef.orderBy("__name__").limit(batchSize);
-
   return new Promise((resolve, reject) => {
     deleteQueryBatch(db, query, resolve).catch(reject);
   });
@@ -16,6 +19,8 @@ import { getFirestore } from "firebase-admin/firestore";
  * Recursively deletes documents in a batch and schedules the next batch.
  * @param {FirebaseFirestore.Firestore} db The Firestore database instance.
  * @param {FirebaseFirestore.Query} query The query for the batch of documents to delete.
+ * @param {Function} resolve The promise resolution function.
+ */
 async function deleteQueryBatch(db, query, resolve) {
   const snapshot = await query.get();
 
@@ -76,4 +81,3 @@ async function main() {
 }
 
 main();
-

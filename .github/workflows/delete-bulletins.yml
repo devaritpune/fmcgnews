@@ -22,12 +22,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '24'
 
       - name: Confirmed?
         id: confirm
         run: |
-          if [ "${{ github.event.inputs.confirm }}" != "yes" ]; then
+          # Convert input to lowercase for case-insensitive comparison
+          if [ "$(echo "${{ github.event.inputs.confirm }}" | tr '[:upper:]' '[:lower:]')" != "yes" ]; then
             echo "Deletion not confirmed. Aborting.";
             exit 1;
           fi
