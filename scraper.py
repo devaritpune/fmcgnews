@@ -78,6 +78,37 @@ TARGET_OUTLETS = [
     {"name": "Agro Spectrum", "region": "East", "domain": "agrospectrumindia.com"},
 ]
 
+# Map Indian states to broad regions to improve geographic tagging
+STATE_TO_REGION = {
+    "uttar pradesh": "North",
+    "punjab": "North",
+    "haryana": "North",
+    "delhi": "North",
+    "rajasthan": "North",
+    "maharashtra": "West",
+    "goa": "West",
+    "gujarat": "West",
+    "karnataka": "South",
+    "kerala": "South",
+    "tamil nadu": "South",
+    "andhra pradesh": "South",
+    "telangana": "South",
+    "odisha": "East",
+    "west bengal": "East",
+    "assam": "East",
+    "bihar": "East",
+    "jharkhand": "East",
+}
+
+def detect_region_from_text(text, default_region=None):
+  if not text:
+    return default_region
+  lower = text.lower()
+  for state, region in STATE_TO_REGION.items():
+    if state in lower:
+      return region
+  return default_region
+
 
 def clean_text(raw_text):
   if not raw_text:
@@ -132,24 +163,34 @@ def analyze_with_gemini(headline, description):
         "category": "🌶️ Spices & Pickles",
         "riskLevel": "MEDIUM",
         "summary": f"Key update regarding {headline[:60]}...",
+        "business_advisory": {
+            "qa_compliance": "Review QA sampling protocols and align with recent regulatory notices.",
+            "supply_chain": "Assess supplier capacity and diversify procurement across regions.",
+            "export_strategy": "Monitor export policy changes and adjust shipment prioritization.",
+        },
         "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
     }
-
   prompt = f"""
-    You are an FMCG Industry Supply Chain Analyst. Analyze this news item:
+    You are an FMCG Industry Supply Chain and Commercial Analyst focused on Spices & Pickles.
     Headline: {headline}
     Description: {description}
 
-    Return ONLY a raw valid JSON object with no backticks, markdown, or text formatting:
+    Produce ONLY a single JSON object (no surrounding text) with the following structure and concise, practical recommendations tailored to procurement, QA, and export teams:
     {{
       "category": "🌶️ Spices & Pickles",
-      "riskLevel": "MEDIUM",
-      "summary": "2-sentence executive summary focused on supply chain, brand, or pricing impact.",
-      "actionAdvisory": "1-sentence strategic action advisory for procurement teams."
+      "riskLevel": "MEDIUM|HIGH|LOW",
+      "summary": "Two-sentence executive summary focused on supply chain, pricing, and market impact.",
+      "business_advisory": {{
+          "qa_compliance": "1-2 sentence tactical QA/compliance next steps (lab testing, certificates, recalls).",
+          "supply_chain": "1-2 sentence procurement/sourcing actions (alternate suppliers, safety stock, logistics).",
+          "export_strategy": "1-2 sentence export/IB actions (priority markets, documentation, tariffs)."
+      }},
+      "actionAdvisory": "One-line executive action for C-suite or procurement head."
     }}
 
     Allowed category values: "🌶️ Spices & Pickles", "🌾 Grains & Pulses", "🥛 Dairy & Edible Oils", "📦 Packaging & Logistics".
     Allowed riskLevel values: "HIGH", "MEDIUM", "LOW".
+    Keep JSON valid, use short clear sentences, and avoid marketing or generic phrases.
     """
 
   try:
@@ -162,7 +203,23 @@ def analyze_with_gemini(headline, description):
       text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
       text = re.sub(r"\n?```$", "", text)
       text = text.strip()
-    return json.loads(text)
+    parsed = json.loads(text)
+    # Normalize business_advisory to ensure expected keys
+    if "business_advisory" in parsed and isinstance(parsed["business_advisory"], dict):
+      # ensure keys exist
+      ba = parsed["business_advisory"]
+      parsed["business_advisory"] = {
+          "qa_compliance": ba.get("qa_compliance", ""),
+          "supply_chain": ba.get("supply_chain", ""),
+          "export_strategy": ba.get("export_strategy", ""),
+      }
+    else:
+      parsed["business_advisory"] = {
+          "qa_compliance": "",
+          "supply_chain": "",
+          "export_strategy": "",
+      }
+    return parsed
   except Exception as e:
     print(f"   ⚠️ Gemini AI API Error Details: {e}")
     return {
@@ -267,21 +324,37 @@ def run_scraper():
           "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       }
 
-      if db:
-        doc_ref = db.collection("bulletins").document(doc_id)
-        doc_ref.set(doc_payload)
-        print(f"   ✅ Stored in Firestore -> Doc ID: {doc_id}")
-      else:
-        print(f"   ℹ️ [Dry Run Payload Saved] -> Doc ID: {doc_id}")
+      try:
+        ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
+      except Exception as e:
+        print(f"⚠️ Gemini AI API Error Details: {e}")
+        ai_data = {
+            "category": "🌶️ Spices & Pickles",
+            "riskLevel": "MEDIUM",
+            "summary": article["raw_desc"][:150] if article["raw_desc"] else article["title"],
+            "business_advisory": {
+                "qa_compliance": "",
+                "supply_chain": "",
+                "export_strategy": "",
+            },
+            "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
+        }
+      # Improve region: prefer detected state-based region if present in title/description
+      detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
 
-      if clean_url:
-        existing_urls.add(clean_url)
-      if clean_title:
-        existing_titles.add(clean_title)
-
-      time.sleep(2)
-
-  print("\n🎉 Scraper Execution Complete!")
+      doc_payload = {
+          "title": article["title"],
+          "source": article["source"],
+          "region": detected_region,
+          "category": ai_data.get("category", "🌶️ Spices & Pickles"),
+          "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
+          "summary": ai_data.get("summary", ""),
+          "business_advisory": ai_data.get("business_advisory", {"qa_compliance":"","supply_chain":"","export_strategy":""}),
+          "actionAdvisory": ai_data.get("actionAdvisory", ""),
+          "url": article["url"],
+          "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
+          "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      }
   print(f"   ✨ Total New Relevant Bulletins Processed: {processed_count}")
   print(f"   ⏩ Duplicate Bulletins Skipped: {skipped_count}")
 
