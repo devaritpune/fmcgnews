@@ -60,8 +60,12 @@ else:
 
 
 # 4. MASTER KEYWORD GROUPS (Broader search terms to guarantee RSS matches)
-SEARCH_QUERY_STRING = "spices OR MDH OR Everest OR turmeric OR cumin OR FMCG OR food processing"
-
+# The query is structured to find articles that contain AT LEAST ONE keyword from the category group
+# AND AT LEAST ONE keyword from the industry group. This ensures high relevance.
+SPICE_PICKLE_KEYWORDS = '"spices" OR "pickle" OR "masala" OR "turmeric" OR "cumin" OR "chilli" OR "MDH" OR "Everest"'
+INDUSTRY_KEYWORDS = '"FMCG" OR "CPG" OR "Retail" OR "food processing"'
+SEARCH_QUERY_STRING = f"({SPICE_PICKLE_KEYWORDS}) AND ({INDUSTRY_KEYWORDS})"
+ 
 # How many articles to take per outlet (8 outlets * 10 = 80 articles)
 PER_OUTLET_ITEM_LIMIT = 10
 
