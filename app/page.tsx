@@ -294,7 +294,7 @@ export default function Home() {
         setArticles(docs);
       } catch (error: any) {
         console.error("Firestore Fetch Error:", error);
-        setFetchError(`Database Error: ${error.message || "Permission denied or network issue. Check Firebase rules.`};
+        setFetchError(`Database Error: ${error.message || "Permission denied or network issue. Check Firebase rules."}`);
         setArticles([]);
       } finally {
         setLoading(false);
