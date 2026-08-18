@@ -159,22 +159,23 @@ def generate_document_id(sequence_num: int) -> str:
   return f"ART_{date_str}_{sequence_num:03d}"
 
 
-def get_ai_fallback_data(headline: str, description: str) -> Dict[str, Any]:
-    return {
-        "category": "🌶️ Spices & Pickles",
-        "riskLevel": "MEDIUM",
-        "summary": f"Key update regarding {headline[:60]}...",
-        "business_advisory": {
-            "qa_compliance": "Review QA sampling protocols and align with recent regulatory notices.",
-            "supply_chain": "Assess supplier capacity and diversify procurement across regions.",
-            "export_strategy": "Monitor export policy changes and adjust shipment prioritization.",
-        },
-        "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
-    }
-
 def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
+  # Define a consistent fallback dictionary to use on any failure
+  fallback_data = {
+      "category": "🌶️ Spices & Pickles",
+      "riskLevel": "MEDIUM",
+      "summary": description[:200] if description else headline,
+      "business_advisory": {
+          "qa_compliance": "Review QA sampling protocols and align with recent regulatory notices.",
+          "supply_chain": "Assess supplier capacity and diversify procurement across regions.",
+          "export_strategy": "Monitor export policy changes and adjust shipment prioritization.",
+      },
+      "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
+  }
+
+  # If the AI model failed to initialize (e.g., no API key), return fallback data immediately.
   if not ai_model:
-    return get_ai_fallback_data(headline, description)
+    return fallback_data
 
   prompt = f"""
     You are an FMCG Industry Supply Chain and Commercial Analyst focused on Spices & Pickles.
@@ -184,7 +185,7 @@ def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
     Produce ONLY a single JSON object (no surrounding text) with the following structure and concise, practical recommendations tailored to procurement, QA, and export teams:
     {{
       "category": "🌶️ Spices & Pickles",
-      "riskLevel": "MEDIUM|HIGH|LOW",
+      "riskLevel": "One of: HIGH, MEDIUM, LOW",
       "summary": "A two-sentence executive summary. The first sentence must state the core news. The second must state its direct impact on the Indian FMCG market.",
       "business_advisory": {{
           "qa_compliance": "A specific 1-2 sentence QA action. If a regulation (e.g., EtO limits) or contaminant is mentioned, reference it directly. Avoid generic advice.",
@@ -220,10 +221,10 @@ def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
         return parsed
     except json.JSONDecodeError as json_e:
         print(f"   ⚠️ Gemini JSON Parsing Error: {json_e}. Raw text: '{text[:100]}...'")
-        return get_ai_fallback_data(headline, description)
+        return fallback_data
   except Exception as e:
     print(f"   ⚠️ Gemini API Call Error: {e}")
-    return get_ai_fallback_data(headline, description)
+    return fallback_data
 
 def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
   headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -267,13 +268,13 @@ def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
   return articles
 
 
-def run_scraper():
-  print("\n🚀 Starting Comprehensive FMCG Market Scraper (Today's Date Stamp)...\n")
+def main():
+  print("\n🚀 Starting FMCG Market Intelligence Scraper...\n")
 
   current_sequence, existing_urls, existing_titles = get_existing_bulletin_data(db)
   processed_count = 0
   skipped_count = 0
-
+  
   print(f"📌 Matrix Scope: Searching {len(TARGET_OUTLETS)} Target Publications...\n")
 
   for outlet in TARGET_OUTLETS:
@@ -284,7 +285,7 @@ def run_scraper():
       clean_url = article["url"].strip().lower()
       clean_title = article["title"].strip().lower()
 
-      if (clean_url and clean_url in existing_urls) or (clean_title and clean_title in existing_titles):
+      if not clean_title or not clean_url or (clean_url in existing_urls) or (clean_title in existing_titles):
         skipped_count += 1
         print(f"   ⏩ Duplicate Skipped: {article['title'][:50]}...")
         continue
@@ -308,8 +309,8 @@ def run_scraper():
           "category": ai_data.get("category", "🌶️ Spices & Pickles"),
           "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
           "summary": ai_data.get("summary", ""),
-          "business_advisory": ai_data.get("business_advisory", {"qa_compliance":"","supply_chain":"","export_strategy":""}),
-          "actionAdvisory": ai_data.get("actionAdvisory", ""),
+          "business_advisory": ai_data.get("business_advisory", {"qa_compliance": "", "supply_chain": "", "export_strategy": ""}),
+          "actionAdvisory": ai_data.get("actionAdvisory", "Standard monitoring protocols advised."),
           "url": article["url"],
           "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
           "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -326,6 +327,6 @@ def run_scraper():
   print(f"\n✨ Total New Relevant Bulletins Processed: {processed_count}")
   print(f"⏩ Duplicate Bulletins Skipped: {skipped_count}")
 
-
+# Standard Python entry point
 if __name__ == "__main__":
-  run_scraper()
+  main()
