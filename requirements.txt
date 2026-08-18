@@ -1,6 +1,7 @@
-beautifulsoup4
-python-dotenv
-firebase-admin
-google-generativeai
-requests
-lxml
+# Pinning versions to prevent dependency resolution issues in GitHub Actions.
+firebase-admin==6.5.0
+google-generativeai==0.7.1
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+python-dotenv==1.0.1
