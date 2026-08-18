@@ -114,8 +114,8 @@ def detect_region_from_text(text: str, default_region: Optional[str] = None) -> 
 def clean_text(raw_text: str) -> str:
   if not raw_text:
     return ""
-  text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL)
-  soup = BeautifulSoup(text, "html.parser")
+  text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL) # Remove CDATA tags
+  soup = BeautifulSoup(text, "lxml-xml") # Use the lxml parser for XML
   return soup.get_text().strip()
 
 
@@ -238,7 +238,7 @@ def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
   try:
     res = requests.get(rss_url, headers=headers, timeout=10)
     if res.status_code == 200:
-      soup = BeautifulSoup(res.content, "xml") # lxml is faster if installed
+      soup = BeautifulSoup(res.content, "lxml-xml") # Explicitly use the lxml parser for XML
       items = soup.find_all("item")
       
       print(f"   -> RSS fetched for {outlet['name']}: {len(items)} items found.")

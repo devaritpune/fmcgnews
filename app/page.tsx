@@ -216,41 +216,22 @@ export default function Home() {
 
         let docs: Article[] = snapshot.docs.map((doc) => {
           const data = doc.data();
-
-          let parsedAdvisory: BusinessAdvisory = {
-            qa_compliance: data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
-          };
-
-          if (data.business_advisory) {
-            if (typeof data.business_advisory === "object") {
-              parsedAdvisory = {
-                qa_compliance: data.business_advisory.qa_compliance || data.actionAdvisory || "Maintain standard quality testing and supplier audits.",
-                supply_chain: data.business_advisory.supply_chain,
-                export_strategy: data.business_advisory.export_strategy,
-              };
-            } else if (typeof data.business_advisory === "string") {
-              parsedAdvisory = {
-                qa_compliance: data.business_advisory,
-              };
-            }
-          }
-
+          
+          // Directly map the consistent fields from the Python scraper's payload
           return {
             id: doc.id,
-            title: data.title || data.headline || "Untitled Market Bulletin",
+            title: data.title || "Untitled Market Bulletin",
             category: data.category || "Spices & Pickles",
-            sub_category: data.sub_category || data.subcategory || "",
-            market_scope: data.market_scope || data.scope || "",
-            summary: data.summary || data.raw_desc || data.description || "",
-            full_content: data.full_content || data.summary || data.content || "",
-            region: data.region || data.hub || "Pan-India",
-            published_at: data.published_at || data.timestamp || data.createdDate || data.date,
-            date: data.date || data.createdDate,
-            source_name: data.source_name || data.source || "Market Desk",
-            source_url: data.source_url || data.url || "",
-            key_takeaway: data.key_takeaway || data.actionAdvisory || "",
-            risk_level: data.risk_level || data.riskLevel || "MEDIUM",
-            business_advisory: parsedAdvisory,
+            summary: data.summary || "",
+            full_content: data.summary || "", // Use summary for full content as well
+            region: data.region || "Pan-India",
+            timestamp: data.timestamp,
+            createdDate: data.createdDate,
+            source: data.source || "Market Desk",
+            url: data.url || "",
+            actionAdvisory: data.actionAdvisory || "",
+            riskLevel: data.riskLevel || "MEDIUM",
+            business_advisory: data.business_advisory || {},
             language: data.language || "English",
           };
         });
@@ -280,7 +261,7 @@ export default function Home() {
         const todayStr = toYYYYMMDD(new Date());
 
         docs = docs.filter((item) => {
-          const possible = item.published_at || item.date || item.createdDate;
+          const possible = item.timestamp || item.createdDate;
           const docDate = extractDateISO(possible);
           return docDate === todayStr;
         });
