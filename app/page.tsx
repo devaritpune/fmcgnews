@@ -597,7 +597,7 @@ export default function Home() {
                         {article.title}
                       </h4>
 
-                      <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">
+                      <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
                         {article.summary}
                       </p>
                     </div>

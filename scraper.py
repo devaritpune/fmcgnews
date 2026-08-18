@@ -1,9 +1,9 @@
 import json
 import os
 import re
-import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Set, Tuple, Dict, Any, List, Optional
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import firebase_admin
@@ -14,49 +14,46 @@ import requests
 # 1. Load Environment Variables from .env file
 load_dotenv()
 
+# --- Constants ---
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "fmcgdesk")
+BULLETINS_COLLECTION = "bulletins"
+GEMINI_MODEL_NAME = "gemini-1.5-flash-latest" # Updated model
+
 
 # 2. Initialize Firebase Firestore Connection
-def init_firebase():
+def init_firebase() -> Optional[firestore.Client]:
   try:
     if not firebase_admin._apps:
-      if os.path.exists("serviceAccountKey.json"):
-        cred = credentials.Certificate("serviceAccountKey.json")
-        firebase_admin.initialize_app(cred)
-        print("✅ Connected to Firebase via serviceAccountKey.json!")
-      elif os.getenv("FIREBASE_PRIVATE_KEY") and os.getenv(
-          "FIREBASE_CLIENT_EMAIL"
-      ):
-        private_key = os.getenv("FIREBASE_PRIVATE_KEY").replace("\\n", "\n")
-        cred = credentials.Certificate({
-            "type": "service_account",
-            "project_id": os.getenv("FIREBASE_PROJECT_ID", "fmcgdesk"),
-            "private_key": private_key,
-            "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
-            "token_uri": "https://oauth2.googleapis.com/token",
-        })
-        firebase_admin.initialize_app(cred)
-        print("✅ Connected to Firebase via .env Environment Variables!")
+      service_account_key_str = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
+      if service_account_key_str:
+        service_account_info = json.loads(service_account_key_str)
+        cred = credentials.Certificate(service_account_info)
+        firebase_admin.initialize_app(cred, {"projectId": FIREBASE_PROJECT_ID})
+        print(f"✅ Connected to Firebase project: {FIREBASE_PROJECT_ID}")
       else:
-        print("⚠️ No Firebase credentials found. Running in DRY RUN mode.")
+        print("⚠️ FIREBASE_SERVICE_ACCOUNT_KEY not found. Running in DRY RUN mode (no database writes).")
         return None
     return firestore.client()
   except Exception as e:
-    print(f"❌ Firebase Init Error: {e}")
+    print(f"❌ Firebase Initialization Error: {e}")
     return None
 
 
 db = init_firebase()
 
 # 3. Initialize Gemini AI Client using google-genai SDK
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-MODEL_NAME = "gemini-3.1-flash-lite"
-
-if GEMINI_API_KEY:
-  ai_client = genai.Client(api_key=GEMINI_API_KEY)
-  print(f"✅ Gemini AI API loaded successfully! Model: {MODEL_NAME}")
-else:
-  ai_client = None
-  print("⚠️ GEMINI_API_KEY not found in .env — using fallback smart summaries.")
+try:
+  GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+  if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    ai_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+    print(f"✅ Gemini AI API configured successfully! Model: {GEMINI_MODEL_NAME}")
+  else:
+    ai_model = None
+    print("⚠️ GEMINI_API_KEY not found. AI analysis will use fallback summaries.")
+except Exception as e:
+  ai_model = None
+  print(f"❌ Gemini AI Initialization Error: {e}")
 
 
 # 4. MASTER KEYWORD GROUPS (Broader search terms to guarantee RSS matches)
@@ -65,7 +62,7 @@ else:
 SPICE_PICKLE_KEYWORDS = '"spices" OR "pickle" OR "masala" OR "turmeric" OR "cumin" OR "chilli" OR "MDH" OR "Everest"'
 INDUSTRY_KEYWORDS = '"FMCG" OR "CPG" OR "Retail" OR "food processing"'
 SEARCH_QUERY_STRING = f"({SPICE_PICKLE_KEYWORDS}) AND ({INDUSTRY_KEYWORDS})"
- 
+
 # How many articles to take per outlet (8 outlets * 10 = 80 articles)
 PER_OUTLET_ITEM_LIMIT = 10
 
@@ -104,7 +101,7 @@ STATE_TO_REGION = {
   "jharkhand": "East India",
 }
 
-def detect_region_from_text(text, default_region=None):
+def detect_region_from_text(text: str, default_region: Optional[str] = None) -> Optional[str]:
   if not text:
     return default_region
   lower = text.lower()
@@ -114,7 +111,7 @@ def detect_region_from_text(text, default_region=None):
   return default_region
 
 
-def clean_text(raw_text):
+def clean_text(raw_text: str) -> str:
   if not raw_text:
     return ""
   text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL)
@@ -122,23 +119,24 @@ def clean_text(raw_text):
   return soup.get_text().strip()
 
 
-def get_existing_bulletin_data(db_client):
+def get_existing_bulletin_data(db_client: Optional[firestore.Client]) -> Tuple[int, Set[str], Set[str]]:
   if not db_client:
     return 0, set(), set()
 
   existing_urls = set()
   existing_titles = set()
   highest_seq = 0
+  
+  # Fetch records from the last 48 hours for efficient deduplication
+  cutoff_date = datetime.now(timezone.utc) - timedelta(days=2)
   date_prefix = f"ART_{datetime.now().strftime('%Y_%m_%d')}_"
 
   try:
-    docs = db_client.collection("bulletins").stream()
+    docs = db_client.collection(BULLETINS_COLLECTION).where("timestamp", ">=", cutoff_date).stream()
     for doc in docs:
       data = doc.to_dict()
-      if "url" in data and data["url"]:
-        existing_urls.add(data["url"].strip().lower())
-      if "title" in data and data["title"]:
-        existing_titles.add(data["title"].strip().lower())
+      existing_urls.add(data.get("url", "").strip().lower())
+      existing_titles.add(data.get("title", "").strip().lower())
 
       if doc.id.startswith(date_prefix):
         match = re.search(r"_(\d{3})$", doc.id)
@@ -148,21 +146,20 @@ def get_existing_bulletin_data(db_client):
             highest_seq = seq_num
 
     if highest_seq > 0:
-      print(f"ℹ️ Found existing bulletins for today. Highest sequence: {highest_seq:03d}")
-    print(f"ℹ️ Indexed {len(existing_urls)} existing articles in Firestore for deduplication.")
+      print(f"ℹ️ Found existing bulletins for today. Next sequence starts after: {highest_seq:03d}")
+    print(f"ℹ️ Indexed {len(existing_urls)} recent articles for deduplication.")
   except Exception as e:
     print(f"⚠️ Could not fetch existing records for deduplication: {e}")
 
   return highest_seq, existing_urls, existing_titles
 
 
-def generate_document_id(sequence_num):
+def generate_document_id(sequence_num: int) -> str:
   date_str = datetime.now().strftime("%Y_%m_%d")
   return f"ART_{date_str}_{sequence_num:03d}"
 
 
-def analyze_with_gemini(headline, description):
-  if not ai_client:
+def get_ai_fallback_data(headline: str, description: str) -> Dict[str, Any]:
     return {
         "category": "🌶️ Spices & Pickles",
         "riskLevel": "MEDIUM",
@@ -183,58 +180,47 @@ def analyze_with_gemini(headline, description):
     {{
       "category": "🌶️ Spices & Pickles",
       "riskLevel": "MEDIUM|HIGH|LOW",
-      "summary": "Two-sentence executive summary focused on supply chain, pricing, and market impact.",
+      "summary": "A two-sentence executive summary. The first sentence must state the core news. The second must state its direct impact on the Indian FMCG market.",
       "business_advisory": {{
-          "qa_compliance": "1-2 sentence tactical QA/compliance next steps (lab testing, certificates, recalls).",
-          "supply_chain": "1-2 sentence procurement/sourcing actions (alternate suppliers, safety stock, logistics).",
-          "export_strategy": "1-2 sentence export/IB actions (priority markets, documentation, tariffs)."
+          "qa_compliance": "A specific 1-2 sentence QA action. If a regulation (e.g., EtO limits) or contaminant is mentioned, reference it directly. Avoid generic advice.",
+          "supply_chain": "A specific 1-2 sentence procurement action. If a region or commodity is mentioned, focus the advice on it. Avoid generic advice.",
+          "export_strategy": "A specific 1-2 sentence export action. If a country or trade bloc (e.g., EU, US) is mentioned, tailor the advice for it. Avoid generic advice."
       }},
-      "actionAdvisory": "One-line executive action for C-suite or procurement head."
+      "actionAdvisory": "A single, critical, and actionable recommendation for a C-level executive, derived *only* from the information in this article."
     }}
 
-    Allowed category values: "🌶️ Spices & Pickles", "🌾 Grains & Pulses", "🥛 Dairy & Edible Oils", "📦 Packaging & Logistics".
-    Allowed riskLevel values: "HIGH", "MEDIUM", "LOW".
-    Keep JSON valid, use short clear sentences, and avoid marketing or generic phrases.
+    CRITICAL INSTRUCTIONS: Your advice MUST be unique and directly based on the provided Headline and Description. DO NOT use generic or placeholder text. Be specific and tactical. Ensure the output is a single, valid JSON object and nothing else.
     """
 
   try:
-    response = ai_client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-    )
+    response = ai_model.generate_content(prompt)
     text = response.text.strip()
-    if text.startswith("```"):
-      text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-      text = re.sub(r"\n?```$", "", text)
-      text = text.strip()
-    parsed = json.loads(text)
-    # Normalize business_advisory to ensure expected keys
-    if "business_advisory" in parsed and isinstance(parsed["business_advisory"], dict):
-      # ensure keys exist
-      ba = parsed["business_advisory"]
-      parsed["business_advisory"] = {
-          "qa_compliance": ba.get("qa_compliance", ""),
-          "supply_chain": ba.get("supply_chain", ""),
-          "export_strategy": ba.get("export_strategy", ""),
-      }
-    else:
-      parsed["business_advisory"] = {
-          "qa_compliance": "",
-          "supply_chain": "",
-          "export_strategy": "",
-      }
-    return parsed
+    
+    # Robustly find and parse the JSON block
+    json_match = re.search(r"```(json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if json_match:
+        json_str = json_match.group(2)
+    else: # If no markdown block, assume the whole text is the JSON
+        json_str = text
+
+    try:
+        parsed = json.loads(json_str)
+        # Normalize business_advisory to ensure expected keys
+        ba = parsed.get("business_advisory", {})
+        parsed["business_advisory"] = {
+            "qa_compliance": ba.get("qa_compliance", ""),
+            "supply_chain": ba.get("supply_chain", ""),
+            "export_strategy": ba.get("export_strategy", ""),
+        }
+        return parsed
+    except json.JSONDecodeError as json_e:
+        print(f"   ⚠️ Gemini JSON Parsing Error: {json_e}. Raw text: '{text[:100]}...'")
+        return get_ai_fallback_data(headline, description)
   except Exception as e:
-    print(f"   ⚠️ Gemini AI API Error Details: {e}")
-    return {
-        "category": "🌶️ Spices & Pickles",
-        "riskLevel": "MEDIUM",
-        "summary": description[:150] if description else headline,
-        "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
-    }
+    print(f"   ⚠️ Gemini API Call Error: {e}")
+    return get_ai_fallback_data(headline, description)
 
-
-def fetch_targeted_outlet_news(outlet):
+def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
   headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
   articles = []
   query = f'site:{outlet["domain"]} ({SEARCH_QUERY_STRING})'
@@ -246,7 +232,7 @@ def fetch_targeted_outlet_news(outlet):
   try:
     res = requests.get(rss_url, headers=headers, timeout=10)
     if res.status_code == 200:
-      soup = BeautifulSoup(res.content, "xml")
+      soup = BeautifulSoup(res.content, "xml") # lxml is faster if installed
       items = soup.find_all("item")
       
       print(f"   -> RSS fetched for {outlet['name']}: {len(items)} items found.")
@@ -288,7 +274,7 @@ def run_scraper():
   for outlet in TARGET_OUTLETS:
     print(f"🔍 Searching {outlet['name']} ({outlet['region']} Region)...")
     articles = fetch_targeted_outlet_news(outlet)
-
+    
     for article in articles:
       clean_url = article["url"].strip().lower()
       clean_title = article["title"].strip().lower()
@@ -304,18 +290,7 @@ def run_scraper():
       doc_id = generate_document_id(current_sequence)
       print(f"   📄 Processing [{doc_id}]: {article['title'][:60]}...")
 
-      # Single call to Gemini AI for analysis
-      try:
-        ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
-      except Exception as e:
-        print(f"   ⚠️ Gemini AI API Error Details: {e}")
-        ai_data = {
-            "category": "🌶️ Spices & Pickles",
-            "riskLevel": "MEDIUM",
-            "summary": article["raw_desc"][:150] if article["raw_desc"] else article["title"],
-            "business_advisory": {"qa_compliance": "", "supply_chain": "", "export_strategy": ""},
-            "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
-        }
+      ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
 
       # Improve region: prefer detected state-based region if present in title/description
       detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
@@ -335,8 +310,16 @@ def run_scraper():
           "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       }
 
-  print(f"   ✨ Total New Relevant Bulletins Processed: {processed_count}")
-  print(f"   ⏩ Duplicate Bulletins Skipped: {skipped_count}")
+      # Save the processed bulletin to Firestore
+      if db:
+        try:
+          db.collection(BULLETINS_COLLECTION).document(doc_id).set(doc_payload)
+          print(f"   ✅ Saved to Firestore: {doc_id}")
+        except Exception as e:
+          print(f"   ❌ Firestore Write Error for {doc_id}: {e}")
+
+  print(f"\n✨ Total New Relevant Bulletins Processed: {processed_count}")
+  print(f"⏩ Duplicate Bulletins Skipped: {skipped_count}")
 
 
 if __name__ == "__main__":
