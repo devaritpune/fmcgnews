@@ -186,6 +186,18 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string>("Spices & Pickles");
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("All");
 
+  // Available FMCG categories dynamically defined
+  const FMCG_CATEGORIES = [
+    { name: "Spices & Pickles", emoji: "🌶️" },
+    { name: "Dairy & Beverages", emoji: "🥛" },
+    { name: "Oils & Ghee", emoji: "🍳" },
+    { name: "Snacks & Confectionery", emoji: "🍿" },
+    { name: "Personal Care", emoji: "🧴" },
+    { name: "Grains & Staples", emoji: "🌾" },
+    { name: "Frozen Food", emoji: "❄️" },
+    { name: "Home Care", emoji: "🧹" },
+  ];
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -201,45 +213,47 @@ export default function Home() {
       setLoading(true);
       setFetchError(null);
       try {
-        // It's better to be consistent with collection names. Using 'bulletins' here.
         const bulletinsCol = collection(db, "bulletins");
-        let q = query(bulletinsCol);
+        let constraints = [];
 
-        // Apply server-side filters for efficiency
+        // Apply region filter if not "All"
         if (selectedRegion !== "All") {
-          q = query(q, where("region", "==", selectedRegion));
+          constraints.push(where("region", "==", selectedRegion));
         }
-        // Filter by the main category. The scraper sets this consistently.
-        q = query(q, where("category", "==", selectedCategory));
 
-        // Filter for the last 24 hours on the server
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        q = query(q, where("timestamp", ">=", twentyFourHoursAgo));
+        // Filter by categoryName - this matches what the scraper sets
+        constraints.push(where("categoryName", "==", selectedCategory));
+
+        // Filter for the last 7 days for better data availability
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        constraints.push(where("timestamp", ">=", sevenDaysAgo));
 
         // Order by most recent and limit the results
-        q = query(q, orderBy("timestamp", "desc"), limit(100));
+        constraints.push(orderBy("timestamp", "desc"));
+        constraints.push(limit(100));
 
-        let snapshot = await getDocs(q);
+        const q = query(bulletinsCol, ...constraints);
+        const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-          setFetchError("No documents found in the 'bulletins' collection for the selected filters in the last 24 hours.");
+          setFetchError(`No articles found for ${selectedCategory} in the last 7 days. Check if the scraper has run and populated data.`);
           setArticles([]);
+          setLoading(false);
+          return;
         }
 
         let docs: Article[] = snapshot.docs.map((doc) => {
           const data = doc.data();
-          
-          // Directly map the consistent fields from the Python scraper's payload
           return {
             id: doc.id,
             title: data.title || "Untitled Market Bulletin",
-            category: data.category || "Spices & Pickles",
+            category: data.category || "📰",
             summary: data.summary || "",
-            full_content: data.summary || "", // Use summary for full content as well
+            full_content: data.summary || "",
             region: data.region || "Pan-India",
             timestamp: data.timestamp,
             createdDate: data.createdDate,
-            source: data.source || "Market Desk",
+            source: data.source || "Market Source",
             url: data.url || "",
             actionAdvisory: data.actionAdvisory || "",
             riskLevel: data.riskLevel || "MEDIUM",
@@ -248,21 +262,21 @@ export default function Home() {
           };
         });
 
-        // Apply Sub-Category Filters robustly across multiple fields
+        // Apply Sub-Category Filters
         if (selectedSubCategory !== "All") {
           const isExportArticle = (title: string, summary: string): boolean => {
-            const content = `${title} ${summary}`;
-            return /\b(export|global|shipment|international|ib)\b/i.test(content);
+            const content = `${title} ${summary}`.toLowerCase();
+            return /\b(export|global|shipment|international|trade|ib)\b/i.test(content);
           };
 
           const isRegulatoryArticle = (title: string, summary: string): boolean => {
-            const content = `${title} ${summary}`;
-            return /\b(fssai|regulation|safety|compliance|regulatory)\b/i.test(content);
+            const content = `${title} ${summary}`.toLowerCase();
+            return /\b(fssai|regulation|safety|compliance|regulatory|audit|standard)\b/i.test(content);
           };
 
           docs = docs.filter(item => {
-            const title = (item.title || "").toLowerCase();
-            const summary = (item.summary || "").toLowerCase();
+            const title = item.title || "";
+            const summary = item.summary || "";
 
             switch (selectedSubCategory) {
               case "Export":
@@ -270,8 +284,6 @@ export default function Home() {
               case "Regulatory":
                 return isRegulatoryArticle(title, summary);
               case "Domestic":
-                // An article is considered "Domestic" if it's NOT explicitly about exports or regulations.
-                // This provides a clearer separation.
                 return !isExportArticle(title, summary) && !isRegulatoryArticle(title, summary);
               default:
                 return true;
@@ -281,8 +293,8 @@ export default function Home() {
 
         setArticles(docs);
       } catch (error: any) {
-        console.error("Detailed Firestore Fetch Error:", error);
-        setFetchError(error.message || "Failed to connect to Firebase database or permission denied.");
+        console.error("Firestore Fetch Error:", error);
+        setFetchError(`Database Error: ${error.message || "Permission denied or network issue. Check Firebase rules.`};
         setArticles([]);
       } finally {
         setLoading(false);
@@ -379,14 +391,22 @@ export default function Home() {
       {/* Categories Bar & View Tab Switcher */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setSelectedCategory("Spices & Pickles")}
-            className="bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer"
-          >
-            <span>🌶️ Spices & Pickles</span>
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full uppercase">Live</span>
-          </button>
-          <span className="text-xs text-slate-500 font-mono italic">Edible Oils, Dairy, Bakery coming soon</span>
+          {FMCG_CATEGORIES.map((category) => (
+            <button
+              key={category.name}
+              onClick={() => {
+                setSelectedCategory(category.name);
+                setSelectedSubCategory("All"); // Reset sub-category on category change
+              }}
+              className={`font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-2 transition border ${
+                selectedCategory === category.name
+                  ? "bg-emerald-950/80 border-emerald-500/80 text-emerald-300 shadow-lg shadow-emerald-950/50"
+                  : "bg-slate-900/60 border-slate-700/80 text-slate-400 hover:border-slate-600"
+              } cursor-pointer`}
+            >
+              <span>{category.emoji} {category.name}</span>
+            </button>
+          ))}
         </div>
 
         <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 self-start md:self-auto">
@@ -408,7 +428,7 @@ export default function Home() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            <span>🗺️ India Map (Locations DB)</span>
+            <span>🗺️ India Map</span>
           </button>
         </div>
       </div>

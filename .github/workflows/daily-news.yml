@@ -1,43 +1,119 @@
-name: Daily FMCG & IB News Ingestion
+name: 🚀 Daily FMCG Multi-Category News Scraper
 
 on:
   schedule:
     # Runs at 23:30 UTC every day (5:00 AM IST)
     - cron: '30 23 * * *'
   workflow_dispatch: # Allows manual trigger anytime from GitHub UI
+  workflow_call: # Can be called from other workflows
+
+env:
+  PYTHON_VERSION: '3.11'
+  LOG_FILE: scraper_run_$(date +%Y%m%d_%H%M%S).log
 
 jobs:
-  ingest-news:
+  scrape-news:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: FMCG News Scraper
+    
     steps:
-      - name: Checkout Code
+      - name: ✅ Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Set up Python
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip' # Caches dependencies based on requirements.txt
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-      - name: Install Dependencies
+      - name: 📦 Install Python Dependencies
         run: |
-          python -m pip install --upgrade pip
+          echo "Installing dependencies from requirements.txt..."
+          python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
+          echo "Dependencies installed successfully ✅"
 
-      - name: Execute Daily Scraper
+      - name: ✔️ Verify Environment Variables
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}" ]; then
+            echo "❌ ERROR: FIREBASE_SERVICE_ACCOUNT_FMCGDESK secret not set!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "⚠️ WARNING: GEMINI_API_KEY not set. Using fallback summaries."
+          fi
+          echo "✅ Environment variables verified"
+
+      - name: 📰 Execute Daily Scraper (Multi-Category)
+        id: scraper
         env:
           FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TZ: Asia/Kolkata
         run: |
-          echo "Starting Python scraper... Output will be logged to scraper.log"
-          if ! python scraper.py > scraper.log 2>&1; then
-            echo "❌ Scraper script failed. See logs for details."
+          echo "🚀 Starting FMCG News Scraper at $(date)"
+          echo "Scraping 8 FMCG categories across 14+ news outlets..."
+          
+          # Run the scraper with timeout and capture output
+          timeout 600 python scraper.py 2>&1 | tee ${LOG_FILE}
+          SCRAPER_EXIT_CODE=$?
+          
+          echo "📊 Scraper completed with exit code: $SCRAPER_EXIT_CODE"
+          
+          # Set output for subsequent steps
+          echo "exit_code=$SCRAPER_EXIT_CODE" >> $GITHUB_OUTPUT
+          echo "log_file=${LOG_FILE}" >> $GITHUB_OUTPUT
+          
+          if [ $SCRAPER_EXIT_CODE -eq 124 ]; then
+            echo "⏱️ ERROR: Scraper timed out after 10 minutes"
+            exit 1
+          elif [ $SCRAPER_EXIT_CODE -ne 0 ]; then
+            echo "❌ Scraper failed with exit code: $SCRAPER_EXIT_CODE"
             exit 1
           fi
+          
+          echo "✅ Scraper completed successfully"
 
-      - name: Upload Scraper Logs on Failure
-        if: failure()
+      - name: 📊 Parse & Log Summary
+        if: always()
+        run: |
+          echo "=== SCRAPER EXECUTION SUMMARY ==="
+          if [ -f "${LOG_FILE}" ]; then
+            echo "Log file: ${LOG_FILE}"
+            echo ""
+            echo "--- Key Metrics ---"
+            grep -i "total\|processed\|skipped\|saved\|error" ${LOG_FILE} || echo "No summary metrics found"
+            echo ""
+            echo "--- Last 20 lines of output ---"
+            tail -n 20 ${LOG_FILE}
+          else
+            echo "Log file not found"
+          fi
+
+      - name: 📤 Upload Logs as Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-scraper-logs
-          path: scraper.log
+          name: scraper-logs-${{ github.run_id }}
+          path: scraper_run_*.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 🔔 Notify on Success
+        if: success()
+        run: |
+          echo "✅ Daily FMCG News Scraper ran successfully!"
+          echo "Timestamp: $(date)"
+          echo "Scraped 8 FMCG categories from 14+ news outlets"
+
+      - name: 🚨 Notify on Failure
+        if: failure()
+        run: |
+          echo "❌ FMCG News Scraper failed!"
+          echo "Exit code: ${{ steps.scraper.outputs.exit_code }}"
+          echo "Please check the logs artifact for details."
+          echo "Logs: ${{ steps.scraper.outputs.log_file }}"
+          exit 1

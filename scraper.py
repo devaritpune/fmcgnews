@@ -56,27 +56,72 @@ except Exception as e:
   print(f"❌ Gemini AI Initialization Error: {e}")
 
 
-# 4. MASTER KEYWORD GROUPS (Broader search terms to guarantee RSS matches)
-# The query is structured to find articles that contain AT LEAST ONE keyword from the category group
-# AND AT LEAST ONE keyword from the industry group. This ensures high relevance.
-SPICE_PICKLE_KEYWORDS = '"spices" OR "pickle" OR "masala" OR "turmeric" OR "cumin" OR "chilli" OR "MDH" OR "Everest"'
-INDUSTRY_KEYWORDS = '"FMCG" OR "CPG" OR "Retail" OR "food processing"'
-SEARCH_QUERY_STRING = f"({SPICE_PICKLE_KEYWORDS}) AND ({INDUSTRY_KEYWORDS})"
+# 4. MASTER KEYWORD GROUPS: Multi-Category FMCG Coverage
+# Each category targets specific product lines within FMCG/CPG sector
+FMCG_SEARCH_CATEGORIES = {
+    "Spices & Pickles": {
+        "keywords": '"spices" OR "pickle" OR "masala" OR "turmeric" OR "cumin" OR "chilli" OR "MDH" OR "Everest" OR "Aashirvaad" OR "Shan"',
+        "category": "🌶️ Spices & Pickles"
+    },
+    "Dairy & Beverages": {
+        "keywords": '"dairy" OR "milk" OR "beverage" OR "juice" OR "soft drink" OR "Amul" OR "ITC" OR "Nestlé" OR "Britannia" OR "Coca-Cola" OR "Pepsi"',
+        "category": "🥛 Dairy & Beverages"
+    },
+    "Oils & Ghee": {
+        "keywords": '"edible oil" OR "ghee" OR "cooking oil" OR "sunflower oil" OR "mustard oil" OR "Saffola" OR "Dalda" OR "Mother Dairy" OR "Patanjali"',
+        "category": "🍳 Oils & Ghee"
+    },
+    "Snacks & Confectionery": {
+        "keywords": '"snacks" OR "biscuits" OR "wafers" OR "chocolate" OR "candy" OR "Britannia" OR "Parle" OR "ITC" OR "Cadbury" OR "Mondelez"',
+        "category": "🍿 Snacks & Confectionery"
+    },
+    "Personal Care": {
+        "keywords": '"personal care" OR "soap" OR "shampoo" OR "toothpaste" OR "cosmetics" OR "Hindustan Unilever" OR "Marico" OR "Godrej" OR "Lotus"',
+        "category": "🧴 Personal Care"
+    },
+    "Grains & Staples": {
+        "keywords": '"grains" OR "rice" OR "wheat" OR "flour" OR "pulses" OR "Aashirvaad" OR "Nature" OR "Fortune" OR "Rajdhani"',
+        "category": "🌾 Grains & Staples"
+    },
+    "Frozen Food": {
+        "keywords": '"frozen food" OR "ready to eat" OR "instant noodles" OR "frozen vegetables" OR "Nestlé" OR "Maggi" OR "ITC" OR "Haldiram"',
+        "category": "❄️ Frozen Food"
+    },
+    "Home Care": {
+        "keywords": '"home care" OR "detergent" OR "cleaning" OR "laundry" OR "Hindustan Unilever" OR "ITC" OR "Godrej" OR "Procter"',
+        "category": "🧹 Home Care"
+    },
+}
 
-# How many articles to take per outlet (8 outlets * 10 = 80 articles)
-PER_OUTLET_ITEM_LIMIT = 10
+# Industry filter to ensure FMCG relevance
+INDUSTRY_KEYWORDS = '"FMCG" OR "CPG" OR "retail" OR "food" OR "consumer goods" OR "market" OR "industry"'
+
+# How many articles to take per outlet per category search (5 outlets * 8 categories * 5 = 200+ articles daily)
+PER_OUTLET_ITEM_LIMIT = 5
+MAX_ARTICLES_PER_CATEGORY = 15
 
 
-# 5. SOURCE MATRIX: Target Outlets across North, South, West, East
+# 5. SOURCE MATRIX: Expanded Target Outlets across All Regions
 TARGET_OUTLETS = [
+  # North India (Business & Finance)
   {"name": "Economic Times", "region": "North India", "domain": "economictimes.indiatimes.com"},
   {"name": "Financial Express", "region": "North India", "domain": "financialexpress.com"},
   {"name": "Business Standard", "region": "North India", "domain": "business-standard.com"},
   {"name": "LiveMint", "region": "North India", "domain": "livemint.com"},
+  {"name": "Indian Express", "region": "North India", "domain": "indianexpress.com"},
+  # South India
   {"name": "The Hindu BusinessLine", "region": "South India", "domain": "thehindubusinessline.com"},
+  {"name": "The Hindu", "region": "South India", "domain": "thehindu.com"},
   {"name": "Deccan Herald", "region": "South India", "domain": "deccanherald.com"},
+  {"name": "Times of India", "region": "South India", "domain": "timesofindia.com"},
+  # East India
   {"name": "Telegraph India", "region": "East India", "domain": "telegraphindia.com"},
-  {"name": "Agro Spectrum", "region": "East India", "domain": "agrospectrumindia.com"},
+  # Agri & Food Focus
+  {"name": "Agro Spectrum", "region": "National", "domain": "agrospectrumindia.com"},
+  {"name": "Commodity Market", "region": "National", "domain": "commodity.com"},
+  # Specialized Business
+  {"name": "CNBC-TV18", "region": "National", "domain": "cnbctv18.com"},
+  {"name": "Moneycontrol", "region": "National", "domain": "moneycontrol.com"},
 ]
 
 # Map Indian states to broad regions to improve geographic tagging
@@ -159,18 +204,19 @@ def generate_document_id(sequence_num: int) -> str:
   return f"ART_{date_str}_{sequence_num:03d}"
 
 
-def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
+def analyze_with_gemini(headline: str, description: str, category_name: str, category_emoji: str) -> Dict[str, Any]:
   # Define a consistent fallback dictionary to use on any failure
   fallback_data = {
-      "category": "🌶️ Spices & Pickles",
+      "category": category_emoji,
+      "categoryName": category_name,
       "riskLevel": "MEDIUM",
       "summary": description[:200] if description else headline,
       "business_advisory": {
-          "qa_compliance": "Review QA sampling protocols and align with recent regulatory notices.",
-          "supply_chain": "Assess supplier capacity and diversify procurement across regions.",
-          "export_strategy": "Monitor export policy changes and adjust shipment prioritization.",
+          "qa_compliance": "Monitor compliance requirements applicable to this category.",
+          "supply_chain": "Evaluate supply chain impact and adjust inventory strategies.",
+          "export_strategy": "Review export opportunities and regulatory requirements.",
       },
-      "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
+      "actionAdvisory": f"Review operational impacts in {category_name} category and take necessary precautions.",
   }
 
   # If the AI model failed to initialize (e.g., no API key), return fallback data immediately.
@@ -178,24 +224,26 @@ def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
     return fallback_data
 
   prompt = f"""
-    You are an FMCG Industry Supply Chain and Commercial Analyst focused on Spices & Pickles.
+    You are an FMCG Industry Supply Chain and Commercial Analyst.
+    Focus Category: {category_name}
     Headline: {headline}
     Description: {description}
 
-    Produce ONLY a single JSON object (no surrounding text) with the following structure and concise, practical recommendations tailored to procurement, QA, and export teams:
+    Produce ONLY a single JSON object (no surrounding text) with the following structure and concise, practical recommendations:
     {{
-      "category": "🌶️ Spices & Pickles",
+      "category": "{category_emoji}",
+      "categoryName": "{category_name}",
       "riskLevel": "One of: HIGH, MEDIUM, LOW",
-      "summary": "A two-sentence executive summary. The first sentence must state the core news. The second must state its direct impact on the Indian FMCG market.",
+      "summary": "A two-sentence executive summary. First: core news. Second: direct impact on Indian FMCG market.",
       "business_advisory": {{
-          "qa_compliance": "A specific 1-2 sentence QA action. If a regulation (e.g., EtO limits) or contaminant is mentioned, reference it directly. Avoid generic advice.",
-          "supply_chain": "A specific 1-2 sentence procurement action. If a region or commodity is mentioned, focus the advice on it. Avoid generic advice.",
-          "export_strategy": "A specific 1-2 sentence export action. If a country or trade bloc (e.g., EU, US) is mentioned, tailor the advice for it. Avoid generic advice."
+          "qa_compliance": "1-2 sentence QA action specific to this news. Reference regulations if mentioned.",
+          "supply_chain": "1-2 sentence procurement action. Reference regions/commodities if mentioned.",
+          "export_strategy": "1-2 sentence export action. Reference countries/blocs if mentioned."
       }},
-      "actionAdvisory": "A single, critical, and actionable recommendation for a C-level executive, derived *only* from the information in this article."
+      "actionAdvisory": "One critical, actionable recommendation for C-level executive based ONLY on this article."
     }}
 
-    CRITICAL INSTRUCTIONS: Your advice MUST be unique and directly based on the provided Headline and Description. DO NOT use generic or placeholder text. Be specific and tactical. Ensure the output is a single, valid JSON object and nothing else.
+    CRITICAL: Be specific and tactical. Avoid generic text. Output must be valid JSON only.
   """
 
   try:
@@ -218,21 +266,23 @@ def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
             "supply_chain": ba.get("supply_chain", ""),
             "export_strategy": ba.get("export_strategy", ""),
         }
+        parsed["categoryName"] = category_name
         return parsed
     except json.JSONDecodeError as json_e:
-        print(f"   ⚠️ Gemini JSON Parsing Error: {json_e}. Raw text: '{text[:100]}...'")
+        print(f"   ⚠️ JSON Parse Error: {json_e}")
         return fallback_data
   except Exception as e:
-    print(f"   ⚠️ Gemini API Call Error: {e}")
+    print(f"   ⚠️ Gemini API Error: {e}")
     return fallback_data
 
-def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
+def fetch_targeted_outlet_news(outlet: Dict[str, str], category_name: str, category_keywords: str) -> List[Dict[str, str]]:
+  """Fetch news for a specific FMCG category from a given outlet."""
   headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
   articles = []
-  query = f'site:{outlet["domain"]} ({SEARCH_QUERY_STRING})'
+  query = f'site:{outlet["domain"]} ({category_keywords}) AND ({INDUSTRY_KEYWORDS})'
   encoded_query = urllib.parse.quote(query)
 
-  # Google News RSS search URL
+  # Google News RSS search URL with Indian locale
   rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
 
   try:
@@ -241,91 +291,131 @@ def fetch_targeted_outlet_news(outlet: Dict[str, str]) -> List[Dict[str, str]]:
       soup = BeautifulSoup(res.content, "lxml-xml") # Explicitly use the lxml parser for XML
       items = soup.find_all("item")
       
-      print(f"   -> RSS fetched for {outlet['name']}: {len(items)} items found.")
+      if len(items) > 0:
+        print(f"   📰 {category_name} | {outlet['name']}: {len(items)} items found")
 
       for item in items[:PER_OUTLET_ITEM_LIMIT]:
         title_elem = item.find("title")
         link_elem = item.find("link")
         desc_elem = item.find("description")
+        pub_date_elem = item.find("pubDate")
 
         title = clean_text(title_elem.text) if title_elem and title_elem.text else ""
         link = link_elem.text.strip() if link_elem and link_elem.text else ""
         desc = clean_text(desc_elem.text) if desc_elem and desc_elem.text else ""
+        pub_date = pub_date_elem.text if pub_date_elem and pub_date_elem.text else ""
 
-        if title:
+        if title and link:
           articles.append({
               "title": title,
               "url": link,
               "raw_desc": desc,
               "source": outlet["name"],
               "region": outlet["region"],
+              "category_name": category_name,
+              "published_date": pub_date,
           })
     else:
-      print(f"   ⚠️ HTTP Status {res.status_code} received for {outlet['name']}")
+      if res.status_code != 429:  # Don't spam 429 (rate limit) warnings
+        print(f"   ⚠️ HTTP {res.status_code} from {outlet['name']}")
+  except requests.exceptions.Timeout:
+    print(f"   ⏱️ Timeout fetching {outlet['name']} ({category_name})")
   except Exception as e:
-    print(f"   ⚠️ Error fetching query for {outlet['name']}: {e}")
+    print(f"   ⚠️ {outlet['name']}: {str(e)[:60]}")
 
   return articles
 
 
 def main():
-  print("\n🚀 Starting FMCG Market Intelligence Scraper...\n")
+  print("\n🚀 Starting FMCG Market Intelligence Scraper (Multi-Category)...\n")
 
   current_sequence, existing_urls, existing_titles = get_existing_bulletin_data(db)
   processed_count = 0
   skipped_count = 0
+  articles_by_category = {}
   
-  print(f"📌 Matrix Scope: Searching {len(TARGET_OUTLETS)} Target Publications...\n")
+  print(f"📊 Coverage: {len(FMCG_SEARCH_CATEGORIES)} categories × {len(TARGET_OUTLETS)} outlets = {len(FMCG_SEARCH_CATEGORIES) * len(TARGET_OUTLETS)} searches\n")
 
-  for outlet in TARGET_OUTLETS:
-    print(f"🔍 Searching {outlet['name']} ({outlet['region']} Region)...")
-    articles = fetch_targeted_outlet_news(outlet)
+  # Iterate through each FMCG category
+  for category_name, category_info in FMCG_SEARCH_CATEGORIES.items():
+    print(f"📂 Processing Category: {category_info['category']} {category_name}")
+    articles_by_category[category_name] = 0
+    category_keywords = category_info["keywords"]
+    category_emoji = category_info["category"]
+
+    # Fetch from all outlets for this category
+    for outlet in TARGET_OUTLETS:
+      articles = fetch_targeted_outlet_news(outlet, category_name, category_keywords)
+      
+      for article in articles:
+        clean_url = article["url"].strip().lower()
+        clean_title = article["title"].strip().lower()
+
+        # Skip duplicates
+        if not clean_title or not clean_url or (clean_url in existing_urls) or (clean_title in existing_titles):
+          skipped_count += 1
+          continue
+
+        current_sequence += 1
+        processed_count += 1
+        articles_by_category[category_name] += 1
+
+        doc_id = generate_document_id(current_sequence)
+        print(f"   📄 [{doc_id}] {article['title'][:55]}...")
+
+        # Analyze with Gemini for this specific category
+        ai_data = analyze_with_gemini(article["title"], article["raw_desc"], category_name, category_emoji)
+
+        # Improve region: prefer detected state-based region if present in title/description
+        detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
+
+        # Build the final payload
+        doc_payload = {
+            "title": article["title"],
+            "source": article["source"],
+            "region": detected_region,
+            "category": ai_data.get("category", category_emoji),
+            "categoryName": ai_data.get("categoryName", category_name),
+            "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
+            "summary": ai_data.get("summary", ""),
+            "business_advisory": ai_data.get("business_advisory", {"qa_compliance": "", "supply_chain": "", "export_strategy": ""}),
+            "actionAdvisory": ai_data.get("actionAdvisory", f"Monitor {category_name} developments."),
+            "url": article["url"],
+            "published_date": article.get("published_date", ""),
+            "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
+            "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        # Save to Firestore
+        if db:
+          try:
+            db.collection(BULLETINS_COLLECTION).document(doc_id).set(doc_payload)
+            print(f"      ✅ Saved: {doc_id}")
+          except Exception as e:
+            print(f"      ❌ Error: {str(e)[:50]}")
+        else:
+          print(f"      ⏭️ Dry run (no Firestore)")
+
+        # Add to dedup tracking
+        existing_urls.add(clean_url)
+        existing_titles.add(clean_title)
+
+        # Rate limiting to avoid IP blocks (100ms per article)
+        import time
+        time.sleep(0.1)
     
-    for article in articles:
-      clean_url = article["url"].strip().lower()
-      clean_title = article["title"].strip().lower()
+    print(f"   ✅ {category_name}: {articles_by_category[category_name]} new articles\n")
 
-      if not clean_title or not clean_url or (clean_url in existing_urls) or (clean_title in existing_titles):
-        skipped_count += 1
-        print(f"   ⏩ Duplicate Skipped: {article['title'][:50]}...")
-        continue
-
-      current_sequence += 1
-      processed_count += 1
-
-      doc_id = generate_document_id(current_sequence)
-      print(f"   📄 Processing [{doc_id}]: {article['title'][:60]}...")
-
-      ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
-
-      # Improve region: prefer detected state-based region if present in title/description
-      detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
-
-      # Build the final payload once
-      doc_payload = {
-          "title": article["title"],
-          "source": article["source"],
-          "region": detected_region,
-          "category": ai_data.get("category", "🌶️ Spices & Pickles"),
-          "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
-          "summary": ai_data.get("summary", ""),
-          "business_advisory": ai_data.get("business_advisory", {"qa_compliance": "", "supply_chain": "", "export_strategy": ""}),
-          "actionAdvisory": ai_data.get("actionAdvisory", "Standard monitoring protocols advised."),
-          "url": article["url"],
-          "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
-          "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-      }
-
-      # Save the processed bulletin to Firestore
-      if db:
-        try:
-          db.collection(BULLETINS_COLLECTION).document(doc_id).set(doc_payload)
-          print(f"   ✅ Saved to Firestore: {doc_id}")
-        except Exception as e:
-          print(f"   ❌ Firestore Write Error for {doc_id}: {e}")
-
-  print(f"\n✨ Total New Relevant Bulletins Processed: {processed_count}")
-  print(f"⏩ Duplicate Bulletins Skipped: {skipped_count}")
+  print("=" * 80)
+  print(f"✨ DAILY INGESTION SUMMARY")
+  print("=" * 80)
+  print(f"📈 Total New Bulletins: {processed_count}")
+  print(f"⏩ Duplicates Skipped: {skipped_count}")
+  print(f"\n📋 By Category:")
+  for cat, count in articles_by_category.items():
+    emoji = FMCG_SEARCH_CATEGORIES[cat]["category"]
+    print(f"   {emoji} {cat}: {count} articles")
+  print("=" * 80 + "\n")
 
 # Standard Python entry point
 if __name__ == "__main__":

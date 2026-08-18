@@ -4,6 +4,7 @@ import Parser from "rss-parser";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 import { createRequire } from "module";
+import fetch from "node-fetch";
 
 dotenv.config();
 const require = createRequire(import.meta.url);
@@ -16,38 +17,248 @@ let serviceAccount = null;
 if (!getApps().length) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     try {
-      // Used in GitHub Actions (Passed as JSON string)
       serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
     } catch (e) {
-      console.warn("⚠️ FIREBASE_SERVICE_ACCOUNT_KEY exists but is invalid JSON:", e);
+      console.warn("⚠️ FIREBASE_SERVICE_ACCOUNT_KEY exists but is invalid JSON:", e.message);
       canRunFirestore = false;
     }
   } else {
-    // Used for Local Testing (Requires serviceAccountKey.json in project root)
     try {
       serviceAccount = require("../serviceAccountKey.json");
     } catch (e) {
-      console.warn(
-        "⚠️ Missing Firebase Service Account — no FIREBASE_SERVICE_ACCOUNT_KEY and no serviceAccountKey.json. Firestore writes will be skipped for this run."
-      );
+      console.warn("⚠️ Missing Firebase credentials. Firestore writes will be skipped.");
       canRunFirestore = false;
     }
   }
 
   if (serviceAccount) {
     try {
-      initializeApp({
-        credential: cert(serviceAccount),
-      });
+      initializeApp({ credential: cert(serviceAccount) });
     } catch (e) {
-      console.warn("⚠️ Failed to initialize Firebase Admin SDK:", e);
+      console.warn("⚠️ Failed to initialize Firebase Admin SDK:", e.message);
       canRunFirestore = false;
     }
   }
 }
 
 const db = canRunFirestore ? getFirestore() : null;
-const parser = new Parser();
+const parser = new Parser({ requestOptions: { headers: { "User-Agent": "Mozilla/5.0" } } });
+
+// ---------------------------------------------------------------------------
+// 2. GEMINI AI INITIALIZATION
+// ---------------------------------------------------------------------------
+let genai = null;
+let aiModel = null;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (GEMINI_API_KEY) {
+  try {
+    genai = new GoogleGenerativeAI(GEMINI_API_KEY);
+    aiModel = genai.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    console.log("✅ Gemini AI initialized");
+  } catch (e) {
+    console.warn("⚠️ Gemini initialization failed:", e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. FMCG CATEGORIES & NEWS SOURCES
+// ---------------------------------------------------------------------------
+const FMCG_CATEGORIES = {
+  "Spices & Pickles": {
+    emoji: "🌶️",
+    keywords: ["spices", "pickle", "masala", "turmeric", "cumin", "chilli"],
+    regions: ["North India", "South India", "East India", "West India"],
+  },
+  "Dairy & Beverages": {
+    emoji: "🥛",
+    keywords: ["dairy", "milk", "beverage", "juice", "soft drink"],
+    regions: ["North India", "South India", "West India"],
+  },
+  "Oils & Ghee": {
+    emoji: "🍳",
+    keywords: ["edible oil", "ghee", "cooking oil", "sunflower oil", "mustard oil"],
+    regions: ["North India", "West India"],
+  },
+  "Personal Care": {
+    emoji: "🧴",
+    keywords: ["personal care", "soap", "shampoo", "toothpaste", "cosmetics"],
+    regions: ["National"],
+  },
+  "Snacks & Confectionery": {
+    emoji: "🍿",
+    keywords: ["snacks", "biscuits", "chocolate", "candy", "wafers"],
+    regions: ["National"],
+  },
+};
+
+const NEWS_OUTLETS = [
+  "https://economictimes.indiatimes.com/rss.cms",
+  "https://www.business-standard.com/rss/",
+  "https://feeds.bloomberg.com/news/news.rss",
+];
+
+// ---------------------------------------------------------------------------
+// 4. UTILITY FUNCTIONS
+// ---------------------------------------------------------------------------
+async function analyzeWithGemini(headline, description, categoryName, categoryEmoji) {
+  const fallbackData = {
+    category: categoryEmoji,
+    categoryName: categoryName,
+    riskLevel: "MEDIUM",
+    summary: (description || headline).substring(0, 200),
+    business_advisory: {
+      qa_compliance: "Monitor quality compliance requirements.",
+      supply_chain: "Evaluate supply chain implications.",
+      export_strategy: "Review export opportunities.",
+    },
+    actionAdvisory: `Monitor ${categoryName} market developments.`,
+  };
+
+  if (!aiModel) return fallbackData;
+
+  try {
+    const prompt = `Analyze this FMCG news for ${categoryName}:
+    Headline: ${headline}
+    Description: ${description}
+    
+    Return ONLY valid JSON with these fields:
+    - category: "${categoryEmoji}"
+    - categoryName: "${categoryName}"
+    - riskLevel: "HIGH", "MEDIUM", or "LOW"
+    - summary: Two-sentence summary
+    - business_advisory: {qa_compliance, supply_chain, export_strategy}
+    - actionAdvisory: One C-level action`;
+
+    const response = await aiModel.generateContent(prompt);
+    const text = response.response.text();
+    
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return fallbackData;
+  } catch (error) {
+    console.warn("⚠️ Gemini analysis failed:", error.message);
+    return fallbackData;
+  }
+}
+
+async function fetchOutletNews(feedUrl, categoryName, categoryEmoji) {
+  const articles = [];
+  try {
+    console.log(`  📰 Fetching from ${feedUrl}...`);
+    const feed = await parser.parseURL(feedUrl);
+    
+    for (const item of (feed.items || []).slice(0, 10)) {
+      const title = item.title || "";
+      const description = item.content || item.contentSnippet || item.description || "";
+      const link = item.link || "";
+      const pubDate = item.pubDate || new Date().toISOString();
+
+      if (!title || !link) continue;
+
+      // Check if article is relevant to category keywords
+      const content = (title + " " + description).toLowerCase();
+      const keywords = FMCG_CATEGORIES[categoryName]?.keywords || [];
+      const isRelevant = keywords.some((kw) => content.includes(kw));
+
+      if (isRelevant) {
+        articles.push({
+          title,
+          description: description.substring(0, 500),
+          url: link,
+          source: feedUrl,
+          publishedDate: pubDate,
+          category: categoryName,
+          categoryEmoji,
+        });
+      }
+    }
+    console.log(`     → Found ${articles.length} relevant articles`);
+  } catch (error) {
+    console.error(`  ❌ Error fetching ${feedUrl}:`, error.message);
+  }
+  return articles;
+}
+
+async function saveToFirestore(article, sequence) {
+  if (!db) {
+    console.log("    ⏭️  Dry run (no Firestore)");
+    return;
+  }
+
+  try {
+    const docId = `ART_${new Date().toISOString().split("T")[0].replace(/-/g, "_")}_${String(sequence).padStart(3, "0")}`;
+    const aiData = await analyzeWithGemini(
+      article.title,
+      article.description,
+      article.category,
+      article.categoryEmoji
+    );
+
+    const docPayload = {
+      title: article.title,
+      summary: aiData.summary,
+      category: aiData.category,
+      categoryName: aiData.categoryName,
+      riskLevel: aiData.riskLevel,
+      source: new URL(article.source).hostname,
+      url: article.url,
+      region: "National",
+      timestamp: new Date(),
+      createdDate: new Date().toISOString(),
+      business_advisory: aiData.business_advisory,
+      actionAdvisory: aiData.actionAdvisory,
+    };
+
+    await db.collection("bulletins").doc(docId).set(docPayload);
+    console.log(`    ✅ Saved: ${docId}`);
+    return docId;
+  } catch (error) {
+    console.error("    ❌ Firestore error:", error.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5. MAIN EXECUTION
+// ---------------------------------------------------------------------------
+async function main() {
+  console.log("\n🚀 Starting Node.js FMCG News Scraper (Backup)...\n");
+
+  let totalProcessed = 0;
+  let totalSkipped = 0;
+
+  for (const [categoryName, categoryInfo] of Object.entries(FMCG_CATEGORIES)) {
+    console.log(`📂 Category: ${categoryInfo.emoji} ${categoryName}`);
+
+    let categoryCount = 0;
+    for (const outlet of NEWS_OUTLETS) {
+      const articles = await fetchOutletNews(outlet, categoryName, categoryInfo.emoji);
+      
+      for (const article of articles) {
+        totalProcessed++;
+        categoryCount++;
+        await saveToFirestore(article, totalProcessed);
+        
+        // Rate limiting
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    console.log(`  ✅ ${categoryName}: ${categoryCount} articles\n`);
+  }
+
+  console.log("=".repeat(80));
+  console.log(`✨ Scraping Complete: ${totalProcessed} articles processed`);
+  console.log("=".repeat(80) + "\n");
+}
+
+main().catch((error) => {
+  console.error("❌ Fatal error:", error);
+  process.exit(1);
+});
+
 
 // ---------------------------------------------------------------------------
 // 2. GEMINI AI INITIALIZATION
