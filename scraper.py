@@ -304,48 +304,23 @@ def run_scraper():
       doc_id = generate_document_id(current_sequence)
       print(f"   📄 Processing [{doc_id}]: {article['title'][:60]}...")
 
+      # Single call to Gemini AI for analysis
       try:
         ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
       except Exception as e:
-        print(f"⚠️ Gemini AI API Error Details: {e}")
+        print(f"   ⚠️ Gemini AI API Error Details: {e}")
         ai_data = {
             "category": "🌶️ Spices & Pickles",
             "riskLevel": "MEDIUM",
             "summary": article["raw_desc"][:150] if article["raw_desc"] else article["title"],
+            "business_advisory": {"qa_compliance": "", "supply_chain": "", "export_strategy": ""},
             "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
         }
 
-      doc_payload = {
-          "title": article["title"],
-          "source": article["source"],
-          "region": article["region"],
-          "category": ai_data.get("category", "🌶️ Spices & Pickles"),
-          "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
-          "summary": ai_data.get("summary", ""),
-          "actionAdvisory": ai_data.get("actionAdvisory", ""),
-          "url": article["url"],
-          "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
-          "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-      }
-
-      try:
-        ai_data = analyze_with_gemini(article["title"], article["raw_desc"])
-      except Exception as e:
-        print(f"⚠️ Gemini AI API Error Details: {e}")
-        ai_data = {
-            "category": "🌶️ Spices & Pickles",
-            "riskLevel": "MEDIUM",
-            "summary": article["raw_desc"][:150] if article["raw_desc"] else article["title"],
-            "business_advisory": {
-                "qa_compliance": "",
-                "supply_chain": "",
-                "export_strategy": "",
-            },
-            "actionAdvisory": "Monitor regional market movements and adjust procurement buffers.",
-        }
       # Improve region: prefer detected state-based region if present in title/description
       detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
 
+      # Build the final payload once
       doc_payload = {
           "title": article["title"],
           "source": article["source"],
@@ -359,6 +334,7 @@ def run_scraper():
           "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
           "createdDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       }
+
   print(f"   ✨ Total New Relevant Bulletins Processed: {processed_count}")
   print(f"   ⏩ Duplicate Bulletins Skipped: {skipped_count}")
 
