@@ -236,34 +236,26 @@ export default function Home() {
           };
         });
 
-        // Filter to only include documents dated today (local date)
-        const toYYYYMMDD = (d: Date) => {
-          const yy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, "0");
-          const dd = String(d.getDate()).padStart(2, "0");
-          return `${yy}-${mm}-${dd}`;
-        };
+        // Filter to show articles from the last 24 hours
+        const now = new Date();
+        const twentyFourHoursAgo = now.getTime() - (24 * 60 * 60 * 1000);
 
-        const extractDateISO = (val: any): string | null => {
+        const getDocTimestamp = (val: any): number | null => {
           if (!val) return null;
           if (typeof val === "object" && val.seconds) {
-            return toYYYYMMDD(new Date(val.seconds * 1000));
+            return val.seconds * 1000;
           }
           if (typeof val === "string") {
-            const m = val.match(/(\d{4}-\d{2}-\d{2})/);
-            if (m) return m[1];
             const parsed = new Date(val);
-            if (!isNaN(parsed.getTime())) return toYYYYMMDD(parsed);
+            if (!isNaN(parsed.getTime())) return parsed.getTime();
           }
           return null;
         };
 
-        const todayStr = toYYYYMMDD(new Date());
-
         docs = docs.filter((item) => {
           const possible = item.timestamp || item.createdDate;
-          const docDate = extractDateISO(possible);
-          return docDate === todayStr;
+          const docTime = getDocTimestamp(possible);
+          return docTime ? docTime >= twentyFourHoursAgo : false;
         });
 
         // Apply Sub-Category Filters robustly across multiple fields
