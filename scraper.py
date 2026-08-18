@@ -171,6 +171,11 @@ def get_ai_fallback_data(headline: str, description: str) -> Dict[str, Any]:
         },
         "actionAdvisory": "Review regional supplier contracts and adjust safety stock buffers.",
     }
+
+def analyze_with_gemini(headline: str, description: str) -> Dict[str, Any]:
+  if not ai_model:
+    return get_ai_fallback_data(headline, description)
+
   prompt = f"""
     You are an FMCG Industry Supply Chain and Commercial Analyst focused on Spices & Pickles.
     Headline: {headline}
@@ -190,7 +195,7 @@ def get_ai_fallback_data(headline: str, description: str) -> Dict[str, Any]:
     }}
 
     CRITICAL INSTRUCTIONS: Your advice MUST be unique and directly based on the provided Headline and Description. DO NOT use generic or placeholder text. Be specific and tactical. Ensure the output is a single, valid JSON object and nothing else.
-    """
+  """
 
   try:
     response = ai_model.generate_content(prompt)
