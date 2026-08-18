@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { collection, query, getDocs, limit, where, orderBy } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
 function formatDate(dateValue: any): string {
@@ -61,7 +61,7 @@ interface Article {
   source_url?: string;
   url?: string;
   key_takeaway?: string;
-  risk_level?: string;
+  riskLevel?: string;
   business_advisory?: BusinessAdvisory;
   actionAdvisory?: string;
   language?: string;
@@ -201,17 +201,29 @@ export default function Home() {
       setLoading(true);
       setFetchError(null);
       try {
-        let snapshot = await getDocs(query(collection(db, "bulletins"), limit(100)));
+        // It's better to be consistent with collection names. Using 'bulletins' here.
+        const bulletinsCol = collection(db, "bulletins");
+        let q = query(bulletinsCol);
+
+        // Apply server-side filters for efficiency
+        if (selectedRegion !== "All") {
+          q = query(q, where("region", "==", selectedRegion));
+        }
+        // Filter by the main category. The scraper sets this consistently.
+        q = query(q, where("category", "==", selectedCategory));
+
+        // Filter for the last 24 hours on the server
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        q = query(q, where("timestamp", ">=", twentyFourHoursAgo));
+
+        // Order by most recent and limit the results
+        q = query(q, orderBy("timestamp", "desc"), limit(100));
+
+        let snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-          snapshot = await getDocs(query(collection(db, "Bulletins"), limit(100)));
-        }
-
-        if (snapshot.empty) {
-          setFetchError("Collection 'bulletins' / 'Bulletins' returned 0 documents.");
+          setFetchError("No documents found in the 'bulletins' collection for the selected filters in the last 24 hours.");
           setArticles([]);
-          setLoading(false);
-          return;
         }
 
         let docs: Article[] = snapshot.docs.map((doc) => {
@@ -236,83 +248,35 @@ export default function Home() {
           };
         });
 
-        // Filter to show articles from the last 24 hours
-        const now = new Date();
-        const twentyFourHoursAgo = now.getTime() - (24 * 60 * 60 * 1000);
-
-        const getDocTimestamp = (val: any): number | null => {
-          if (!val) return null;
-          if (typeof val === "object" && val.seconds) {
-            return val.seconds * 1000;
-          }
-          if (typeof val === "string") {
-            const parsed = new Date(val);
-            if (!isNaN(parsed.getTime())) return parsed.getTime();
-          }
-          return null;
-        };
-
-        docs = docs.filter((item) => {
-          const possible = item.timestamp || item.createdDate;
-          const docTime = getDocTimestamp(possible);
-          return docTime ? docTime >= twentyFourHoursAgo : false;
-        });
-
         // Apply Sub-Category Filters robustly across multiple fields
         if (selectedSubCategory !== "All") {
-          docs = docs.filter((item) => {
-            const cat = (item.category || "").toLowerCase();
-            const subCat = (item.sub_category || "").toLowerCase();
-            const scope = (item.market_scope || "").toLowerCase();
+          const isExportArticle = (title: string, summary: string): boolean => {
+            const content = `${title} ${summary}`;
+            return /\b(export|global|shipment|international|ib)\b/i.test(content);
+          };
+
+          const isRegulatoryArticle = (title: string, summary: string): boolean => {
+            const content = `${title} ${summary}`;
+            return /\b(fssai|regulation|safety|compliance|regulatory)\b/i.test(content);
+          };
+
+          docs = docs.filter(item => {
             const title = (item.title || "").toLowerCase();
             const summary = (item.summary || "").toLowerCase();
 
-            if (selectedSubCategory === "Domestic") {
-              return (
-                scope.includes("domestic") ||
-                cat.includes("domestic") ||
-                subCat.includes("domestic") ||
-                (!scope.includes("export") && !scope.includes("international") && !scope.includes("ib"))
-              );
+            switch (selectedSubCategory) {
+              case "Export":
+                return isExportArticle(title, summary);
+              case "Regulatory":
+                return isRegulatoryArticle(title, summary);
+              case "Domestic":
+                // An article is considered "Domestic" if it's NOT explicitly about exports or regulations.
+                // This provides a clearer separation.
+                return !isExportArticle(title, summary) && !isRegulatoryArticle(title, summary);
+              default:
+                return true;
             }
-            if (selectedSubCategory === "Export") {
-              return (
-                scope.includes("export") ||
-                scope.includes("ib") ||
-                scope.includes("international") ||
-                cat.includes("ib") ||
-                cat.includes("export") ||
-                cat.includes("international") ||
-                subCat.includes("export") ||
-                subCat.includes("ib") ||
-                title.includes("export") ||
-                title.includes("global") ||
-                title.includes("shipment")
-              );
-            }
-            if (selectedSubCategory === "Regulatory") {
-              return (
-                subCat.includes("regulatory") ||
-                subCat.includes("compliance") ||
-                subCat.includes("safety") ||
-                cat.includes("regulatory") ||
-                cat.includes("food safety") ||
-                scope.includes("regulatory") ||
-                title.includes("fssai") ||
-                title.includes("regulation") ||
-                title.includes("safety") ||
-                title.includes("compliance") ||
-                summary.includes("fssai") ||
-                summary.includes("compliance")
-              );
-            }
-            return true;
           });
-        }
-
-        // Apply Region Filters
-        if (selectedRegion !== "All") {
-          docs = docs.filter((item) => item.region?.toLowerCase() === selectedRegion.toLowerCase());
         }
 
         setArticles(docs);
@@ -344,10 +308,10 @@ export default function Home() {
     window.open(`https://api.whatsapp.com/send?text=${text}`, "_blank");
   };
 
-  const getRiskBadge = (level?: string) => {
+  const getRiskBadge = useCallback((level?: string) => {
     switch (level?.toUpperCase()) {
       case "HIGH":
-        return <span className="bg-red-950/90 text-red-400 border border-red-700/80 text-xs px-2.5 py-1 rounded-md font-bold font-mono shrink-0">🚨 HIGH RISK</span>;
+        return <span className="bg-red-950/90 text-red-400 border border-red-700/80 text-xs px-2.5 py-1 rounded-md font-bold font-mono shrink-0">🚨 HIGH RISK</span>
       case "MEDIUM":
         return <span className="bg-amber-950/90 text-amber-400 border border-amber-700/80 text-xs px-2.5 py-1 rounded-md font-bold font-mono shrink-0">⚠️ MEDIUM RISK</span>;
       default:
@@ -560,7 +524,7 @@ export default function Home() {
                         <span className="bg-slate-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded font-mono font-medium">
                           📍 {article.region || "Pan-India"}
                         </span>
-                        {getRiskBadge(article.risk_level)}
+                        {getRiskBadge(article.riskLevel)}
                       </div>
 
                       <h4
@@ -583,7 +547,7 @@ export default function Home() {
                         <span>{t("Read Executive Bulletin")}</span> →
                       </button>
                       <button
-                        onClick={() => handleWhatsAppShare(article.title, article.source_url)}
+                        onClick={() => handleWhatsAppShare(article.title, article.url)}
                         className="bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-[11px] font-semibold px-2.5 py-1 rounded-lg hover:bg-emerald-900 transition cursor-pointer"
                       >
                         💬 {t("Share")}
@@ -614,20 +578,20 @@ export default function Home() {
                 <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
                   📍 {selectedArticle.region} Region • Executive Analysis {selectedLanguage !== "English" && `(${selectedLanguage})`}
                 </span>
-                {getRiskBadge(selectedArticle.risk_level)}
+                {getRiskBadge(selectedArticle.riskLevel)}
               </div>
 
               <h3 className="text-xl md:text-2xl font-black text-white leading-snug">
                 {selectedArticle.title}
               </h3>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1">
-                <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.published_at || selectedArticle.date)}</strong></span>
-                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source_name}</strong></span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1">                
+                <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.timestamp || selectedArticle.createdDate)}</strong></span>
+                <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source}</strong></span>
                 
-                {selectedArticle.source_url && (
+                {selectedArticle.url && (
                   <a
-                    href={selectedArticle.source_url}
+                    href={selectedArticle.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-emerald-400 hover:text-emerald-300 underline font-semibold transition flex items-center gap-1"
