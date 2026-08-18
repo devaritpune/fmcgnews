@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
-from google import genai
+import google.generativeai as genai
 import requests
 
 # 1. Load Environment Variables from .env file
