@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # Caches dependencies based on requirements.txt
 
       - name: Install Dependencies
         run: |
@@ -28,8 +29,11 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "Starting Python scraper..."
-          python scraper.py > scraper.log 2>&1
+          echo "Starting Python scraper... Output will be logged to scraper.log"
+          if ! python scraper.py > scraper.log 2>&1; then
+            echo "❌ Scraper script failed. See logs for details."
+            exit 1
+          fi
 
       - name: Upload Scraper Logs on Failure
         if: failure()
