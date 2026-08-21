@@ -159,9 +159,20 @@ def detect_region_from_text(text: str, default_region: Optional[str] = None) -> 
 def clean_text(raw_text: str) -> str:
   if not raw_text:
     return ""
-  text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL) # Remove CDATA tags
-  soup = BeautifulSoup(text, "lxml-xml") # Use the lxml parser for XML
-  return soup.get_text().strip()
+  # RSS title values are often plain text, not standalone XML documents.
+  # Parse any embedded HTML as HTML so plain text remains intact, then
+  # collapse whitespace for consistent display and duplicate checks.
+  text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw_text, flags=re.DOTALL)
+  soup = BeautifulSoup(text, "html.parser")
+  return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+
+
+def is_valid_article_url(url: str) -> bool:
+  """Return whether an RSS article URL is an absolute HTTP(S) URL."""
+  if not url:
+    return False
+  parsed = urllib.parse.urlparse(url)
+  return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def get_existing_bulletin_data(db_client: Optional[firestore.Client]) -> Tuple[int, Set[str], Set[str]]:
@@ -305,16 +316,33 @@ def fetch_targeted_outlet_news(outlet: Dict[str, str], category_name: str, categ
         desc = clean_text(desc_elem.text) if desc_elem and desc_elem.text else ""
         pub_date = pub_date_elem.text if pub_date_elem and pub_date_elem.text else ""
 
-        if title and link:
-          articles.append({
-              "title": title,
-              "url": link,
-              "raw_desc": desc,
-              "source": outlet["name"],
-              "region": outlet["region"],
-              "category_name": category_name,
-              "published_date": pub_date,
-          })
+        rejection_reasons = []
+        if not title_elem or not title_elem.text:
+          rejection_reasons.append("missing title")
+        elif not title:
+          rejection_reasons.append("invalid title after text cleaning")
+
+        if not link_elem or not link_elem.text:
+          rejection_reasons.append("missing link")
+        elif not is_valid_article_url(link):
+          rejection_reasons.append("invalid link URL")
+
+        if rejection_reasons:
+          print(
+              f"   ⚠️ Rejected RSS item | {category_name} | {outlet['name']}: "
+              f"{'; '.join(rejection_reasons)}"
+          )
+          continue
+
+        articles.append({
+            "title": title,
+            "url": link,
+            "raw_desc": desc,
+            "source": outlet["name"],
+            "region": outlet["region"],
+            "category_name": category_name,
+            "published_date": pub_date,
+        })
     else:
       if res.status_code != 429:  # Don't spam 429 (rate limit) warnings
         print(f"   ⚠️ HTTP {res.status_code} from {outlet['name']}")
