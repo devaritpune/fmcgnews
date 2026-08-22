@@ -8,7 +8,8 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import requests
 
 # 1. Load Environment Variables from .env file
@@ -17,7 +18,7 @@ load_dotenv()
 # --- Constants ---
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "fmcgdesk")
 BULLETINS_COLLECTION = "bulletins"
-GEMINI_MODEL_NAME = "gemini-1.5-flash-latest" # Updated model
+GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 
 
 # 2. Initialize Firebase Firestore Connection
@@ -41,20 +42,27 @@ def init_firebase() -> Optional[firestore.Client]:
 
 db = init_firebase()
 
-# 3. Initialize Gemini AI Client using google-genai SDK
+# 3. Initialize Gemini AI Client using the official Google GenAI SDK
 try:
-  GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-  if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    ai_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-    print(f"✅ Gemini AI API configured successfully! Model: {GEMINI_MODEL_NAME}")
-  else:
-    ai_model = None
-    print("⚠️ GEMINI_API_KEY not found. AI analysis will use fallback summaries.")
-except Exception as e:
-  ai_model = None
-  print(f"❌ Gemini AI Initialization Error: {e}")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+    if GEMINI_API_KEY:
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+
+        print(
+            f"✅ Gemini AI API configured successfully! "
+            f"Model: {GEMINI_MODEL_NAME}"
+        )
+    else:
+        gemini_client = None
+        print(
+            "⚠️ GEMINI_API_KEY not found. "
+            "AI analysis will use fallback summaries."
+        )
+
+except Exception as e:
+    gemini_client = None
+    print(f"❌ Gemini AI Initialization Error: {e}")
 
 # 4. MASTER KEYWORD GROUPS: Multi-Category FMCG Coverage
 # Each category targets specific product lines within FMCG/CPG sector
@@ -231,7 +239,7 @@ def analyze_with_gemini(headline: str, description: str, category_name: str, cat
   }
 
   # If the AI model failed to initialize (e.g., no API key), return fallback data immediately.
-  if not ai_model:
+  if not gemini_client:
     return fallback_data
 
   prompt = f"""
@@ -258,30 +266,53 @@ def analyze_with_gemini(headline: str, description: str, category_name: str, cat
   """
 
   try:
-    response = ai_model.generate_content(prompt)
-    text = response.text.strip()
-    
-    # Robustly find and parse the JSON block
-    json_match = re.search(r"```(json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if json_match:
-        json_str = json_match.group(2)
-    else: # If no markdown block, assume the whole text is the JSON
-        json_str = text
+    response = gemini_client.models.generate_content(
+        model=GEMINI_MODEL_NAME,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json"
+        ),
+    )
+
+    text = (response.text or "").strip()
+    if not text:
+        print("   ⚠️ Gemini returned an empty response.")
+        return fallback_data
 
     try:
-        parsed = json.loads(json_str)
-        # Normalize business_advisory to ensure expected keys
-        ba = parsed.get("business_advisory", {})
-        parsed["business_advisory"] = {
-            "qa_compliance": ba.get("qa_compliance", ""),
-            "supply_chain": ba.get("supply_chain", ""),
-            "export_strategy": ba.get("export_strategy", ""),
-        }
-        parsed["categoryName"] = category_name
-        return parsed
-    except json.JSONDecodeError as json_e:
-        print(f"   ⚠️ JSON Parse Error: {json_e}")
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # Defensive fallback in case the model returns a fenced JSON block.
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if not json_match:
+            raise
+        parsed = json.loads(json_match.group(1))
+
+    if not isinstance(parsed, dict):
+        print("   ⚠️ Gemini returned JSON that was not an object.")
         return fallback_data
+
+    # Normalize the response so the existing Firestore/frontend schema is preserved.
+    ba = parsed.get("business_advisory") or {}
+    parsed["business_advisory"] = {
+        "qa_compliance": ba.get("qa_compliance", ""),
+        "supply_chain": ba.get("supply_chain", ""),
+        "export_strategy": ba.get("export_strategy", ""),
+    }
+    parsed["category"] = parsed.get("category", category_emoji)
+    parsed["categoryName"] = category_name
+
+    risk = str(parsed.get("riskLevel", "MEDIUM")).upper().strip()
+    parsed["riskLevel"] = risk if risk in {"HIGH", "MEDIUM", "LOW"} else "MEDIUM"
+    parsed["summary"] = parsed.get("summary") or fallback_data["summary"]
+    parsed["actionAdvisory"] = parsed.get("actionAdvisory") or fallback_data["actionAdvisory"]
+
+    print("      🤖 Gemini analysis successful")
+    return parsed
+
+  except json.JSONDecodeError as e:
+    print(f"   ⚠️ Gemini JSON Parse Error: {e}")
+    return fallback_data
   except Exception as e:
     print(f"   ⚠️ Gemini API Error: {e}")
     return fallback_data
