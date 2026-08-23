@@ -526,7 +526,22 @@ def main():
   processed_count = 0
   skipped_count = 0
   articles_by_category = {}
-  
+
+  # Optional safety limit for controlled manual GitHub Actions tests.
+  # Scheduled runs leave SCRAPER_TEST_LIMIT empty and retain full production behavior.
+  test_limit_raw = os.getenv("SCRAPER_TEST_LIMIT", "").strip()
+  test_limit = None
+  if test_limit_raw:
+    try:
+      parsed_limit = int(test_limit_raw)
+      if parsed_limit > 0:
+        test_limit = parsed_limit
+        print(f"🧪 TEST MODE ACTIVE: stopping after {test_limit} new bulletin(s).")
+      else:
+        print(f"⚠️ Ignoring non-positive SCRAPER_TEST_LIMIT={test_limit_raw!r}; running full ingestion.")
+    except ValueError:
+      print(f"⚠️ Ignoring invalid SCRAPER_TEST_LIMIT={test_limit_raw!r}; running full ingestion.")
+
   print(f"📊 Coverage: {len(FMCG_SEARCH_CATEGORIES)} categories × {len(TARGET_OUTLETS)} outlets = {len(FMCG_SEARCH_CATEGORIES) * len(TARGET_OUTLETS)} searches\n")
 
   # Iterate through each FMCG category
@@ -597,8 +612,18 @@ def main():
         # Rate limiting to avoid IP blocks (100ms per article)
         import time
         time.sleep(0.1)
-    
+
+        if test_limit is not None and processed_count >= test_limit:
+          print(f"   🧪 Test limit reached ({processed_count}/{test_limit}). Stopping controlled run.")
+          break
+
+      if test_limit is not None and processed_count >= test_limit:
+        break
+
     print(f"   ✅ {category_name}: {articles_by_category[category_name]} new articles\n")
+
+    if test_limit is not None and processed_count >= test_limit:
+      break
 
   print("=" * 80)
   print(f"✨ DAILY INGESTION SUMMARY")

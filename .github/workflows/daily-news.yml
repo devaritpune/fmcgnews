@@ -4,8 +4,21 @@ on:
   schedule:
     # Runs at 23:30 UTC every day (5:00 AM IST)
     - cron: '30 23 * * *'
-  workflow_dispatch: # Allows manual trigger anytime from GitHub UI
-  workflow_call: # Can be called from other workflows
+  workflow_dispatch:
+    # Manual safety control: leave blank for full run, or enter a small number (for example 3).
+    inputs:
+      test_limit:
+        description: 'Maximum NEW bulletins to ingest (blank = full production run)'
+        required: false
+        default: ''
+        type: string
+  workflow_call:
+    inputs:
+      test_limit:
+        description: 'Maximum NEW bulletins to ingest (blank = full production run)'
+        required: false
+        default: ''
+        type: string
 
 env:
   PYTHON_VERSION: '3.11'
@@ -52,14 +65,24 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FMCGDESK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SCRAPER_TEST_LIMIT: ${{ inputs.test_limit }}
           TZ: Asia/Kolkata
         run: |
           echo "🚀 Starting FMCG News Scraper at $(date)"
+          if [ -n "${SCRAPER_TEST_LIMIT}" ]; then
+            echo "🧪 Controlled test mode requested: maximum ${SCRAPER_TEST_LIMIT} new bulletin(s)."
+          else
+            echo "🚀 Full production ingestion mode."
+          fi
           echo "Scraping 8 FMCG categories across 14+ news outlets..."
           
-          # Run the scraper with timeout and capture output
-          timeout 600 python scraper.py 2>&1 | tee ${LOG_FILE}
-          SCRAPER_EXIT_CODE=$?
+          # Run the scraper with timeout and capture output.
+          # Capture the Python/timeout exit code even though output is piped through tee.
+          set +e
+          set -o pipefail
+          timeout 600 python scraper.py 2>&1 | tee "${LOG_FILE}"
+          SCRAPER_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
           
           echo "📊 Scraper completed with exit code: $SCRAPER_EXIT_CODE"
           
