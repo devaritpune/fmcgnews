@@ -224,46 +224,118 @@ def generate_document_id(sequence_num: int) -> str:
 
 
 def analyze_with_gemini(headline: str, description: str, category_name: str, category_emoji: str) -> Dict[str, Any]:
-  # Define a consistent fallback dictionary to use on any failure
+  """Generate evidence-grounded FMCG decision intelligence while preserving legacy fields."""
   fallback_data = {
       "category": category_emoji,
       "categoryName": category_name,
       "riskLevel": "MEDIUM",
       "summary": description[:200] if description else headline,
-      "business_advisory": {
-          "qa_compliance": "Monitor compliance requirements applicable to this category.",
-          "supply_chain": "Evaluate supply chain impact and adjust inventory strategies.",
-          "export_strategy": "Review export opportunities and regulatory requirements.",
+      "decision_intelligence": {
+          "event_type": "Other",
+          "what_changed": description[:300] if description else headline,
+          "why_it_matters": "",
+          "strategic_significance": "",
+          "functions_affected": [],
+          "recommended_actions": [],
+          "watch_indicators": [],
+          "risk_type": "Other",
+          "risk_rationale": "Insufficient AI analysis available.",
+          "opportunity": "",
+          "confidence": "LOW",
       },
-      "actionAdvisory": f"Review operational impacts in {category_name} category and take necessary precautions.",
+      "business_advisory": {
+          "qa_compliance": "",
+          "supply_chain": "",
+          "export_strategy": "",
+      },
+      "actionAdvisory": "",
   }
 
-  # If the AI model failed to initialize (e.g., no API key), return fallback data immediately.
   if not gemini_client:
     return fallback_data
 
   prompt = f"""
-    You are an FMCG Industry Supply Chain and Commercial Analyst.
-    Focus Category: {category_name}
-    Headline: {headline}
-    Description: {description}
+You are a senior FMCG Decision Intelligence Analyst supporting C-level leaders
+across Strategy, Sales, Marketing, Procurement, Supply Chain, Manufacturing,
+QA, Regulatory, Finance, International Business and R&D.
 
-    Produce ONLY a single JSON object (no surrounding text) with the following structure and concise, practical recommendations:
-    {{
-      "category": "{category_emoji}",
-      "categoryName": "{category_name}",
-      "riskLevel": "One of: HIGH, MEDIUM, LOW",
-      "summary": "A two-sentence executive summary. First: core news. Second: direct impact on Indian FMCG market.",
-      "business_advisory": {{
-          "qa_compliance": "1-2 sentence QA action specific to this news. Reference regulations if mentioned.",
-          "supply_chain": "1-2 sentence procurement action. Reference regions/commodities if mentioned.",
-          "export_strategy": "1-2 sentence export action. Reference countries/blocs if mentioned."
-      }},
-      "actionAdvisory": "One critical, actionable recommendation for C-level executive based ONLY on this article."
-    }}
+Focus Category: {category_name}
+Headline: {headline}
+Description: {description}
 
-    CRITICAL: Be specific and tactical. Avoid generic text. Output must be valid JSON only.
-  """
+Your task is NOT to produce generic FMCG recommendations.
+
+Analyze only the evidence available in the headline and description.
+Do not invent facts, countries, regulations, commodities, companies,
+consumer trends or operational issues that are not supported by the source.
+If the source is too thin to support a strong conclusion, lower confidence
+and keep recommendations conservative instead of guessing.
+
+First identify the type of business event.
+Then determine why it matters to the selected FMCG category.
+Then identify only the business functions genuinely affected by this event.
+Do NOT force QA, Supply Chain or Export recommendations if they are not relevant.
+
+Produce ONLY one valid JSON object with this exact structure:
+
+{{
+  "category": "{category_emoji}",
+  "categoryName": "{category_name}",
+  "riskLevel": "HIGH, MEDIUM, or LOW",
+  "summary": "Two concise sentences. Sentence 1: factual development. Sentence 2: direct business implication.",
+  "decision_intelligence": {{
+    "event_type": "IPO | Regulation | Commodity Price | Product Launch | M&A | Capacity Expansion | Supply Disruption | Earnings | Trade Policy | Other",
+    "what_changed": "1-2 sentences describing the actual development.",
+    "why_it_matters": "1-2 sentences explaining the business relevance to this FMCG category.",
+    "strategic_significance": "1-2 sentences describing implications for competition, cost, demand, regulation, channel, investment, capability or market structure.",
+    "functions_affected": [
+      "Only include relevant functions from: Strategy, Sales, Marketing, Procurement, Supply Chain, Manufacturing, QA, Regulatory, Finance, International Business, R&D"
+    ],
+    "recommended_actions": [
+      {{
+        "function": "Relevant business function",
+        "action": "Specific action supported by this article",
+        "horizon": "Immediate | 30 Days | 90 Days | Strategic"
+      }}
+    ],
+    "watch_indicators": [
+      "Specific next signal management should monitor"
+    ],
+    "risk_type": "Competitive | Regulatory | Supply | Cost | Demand | Financial | Reputation | Operational | Other",
+    "risk_rationale": "Explain why the risk level was assigned.",
+    "opportunity": "Specific opportunity supported by the article, or empty string if none.",
+    "confidence": "HIGH | MEDIUM | LOW"
+  }},
+  "business_advisory": {{
+    "qa_compliance": "Only populate if QA or regulatory compliance is materially relevant; otherwise empty string.",
+    "supply_chain": "Only populate if procurement, logistics, supply or inventory is materially relevant; otherwise empty string.",
+    "export_strategy": "Only populate if exports, trade policy, foreign markets or international business is materially relevant; otherwise empty string."
+  }},
+  "actionAdvisory": "One concise C-level action based only on this article."
+}}
+
+RISK GUIDANCE:
+HIGH = likely material near-term impact on revenue, margin, supply continuity,
+regulatory exposure, market access or competitive position.
+MEDIUM = meaningful development requiring monitoring or selective action,
+but not an immediate material threat.
+LOW = informational or early-stage development with limited current business impact.
+
+CONFIDENCE GUIDANCE:
+HIGH = the source clearly supports the implication.
+MEDIUM = the implication is reasonable but partly inferential.
+LOW = the source is too thin for strong conclusions.
+
+QUALITY RULES:
+- Be article-specific and evidence-grounded.
+- Avoid boilerplate and generic FMCG advice.
+- Do not repeat the same recommendation across functions.
+- Do not manufacture unsupported tactical advice.
+- Prefer 1-3 strong recommended actions over many weak ones.
+- Use empty strings for irrelevant legacy advisory fields.
+- Keep functions_affected, recommended_actions and watch_indicators concise.
+- Output valid JSON only.
+"""
 
   try:
     response = gemini_client.models.generate_content(
@@ -276,38 +348,100 @@ def analyze_with_gemini(headline: str, description: str, category_name: str, cat
 
     text = (response.text or "").strip()
     if not text:
-        print("   ⚠️ Gemini returned an empty response.")
-        return fallback_data
+      print("   ⚠️ Gemini returned an empty response.")
+      return fallback_data
 
     try:
-        parsed = json.loads(text)
+      parsed = json.loads(text)
     except json.JSONDecodeError:
-        # Defensive fallback in case the model returns a fenced JSON block.
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-        if not json_match:
-            raise
-        parsed = json.loads(json_match.group(1))
+      json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+      if not json_match:
+        raise
+      parsed = json.loads(json_match.group(1))
 
     if not isinstance(parsed, dict):
-        print("   ⚠️ Gemini returned JSON that was not an object.")
-        return fallback_data
+      print("   ⚠️ Gemini returned JSON that was not an object.")
+      return fallback_data
 
-    # Normalize the response so the existing Firestore/frontend schema is preserved.
-    ba = parsed.get("business_advisory") or {}
-    parsed["business_advisory"] = {
-        "qa_compliance": ba.get("qa_compliance", ""),
-        "supply_chain": ba.get("supply_chain", ""),
-        "export_strategy": ba.get("export_strategy", ""),
-    }
     parsed["category"] = parsed.get("category", category_emoji)
     parsed["categoryName"] = category_name
 
     risk = str(parsed.get("riskLevel", "MEDIUM")).upper().strip()
     parsed["riskLevel"] = risk if risk in {"HIGH", "MEDIUM", "LOW"} else "MEDIUM"
     parsed["summary"] = parsed.get("summary") or fallback_data["summary"]
-    parsed["actionAdvisory"] = parsed.get("actionAdvisory") or fallback_data["actionAdvisory"]
+    parsed["actionAdvisory"] = str(parsed.get("actionAdvisory") or "").strip()
 
-    print("      🤖 Gemini analysis successful")
+    di = parsed.get("decision_intelligence") or {}
+    if not isinstance(di, dict):
+      di = {}
+
+    valid_functions = {
+        "Strategy", "Sales", "Marketing", "Procurement", "Supply Chain",
+        "Manufacturing", "QA", "Regulatory", "Finance",
+        "International Business", "R&D"
+    }
+    valid_horizons = {"Immediate", "30 Days", "90 Days", "Strategic"}
+
+    functions_affected = di.get("functions_affected") or []
+    if not isinstance(functions_affected, list):
+      functions_affected = []
+    functions_affected = [
+        str(item).strip() for item in functions_affected
+        if str(item).strip() in valid_functions
+    ][:6]
+
+    recommended_actions = di.get("recommended_actions") or []
+    normalized_actions = []
+    if isinstance(recommended_actions, list):
+      for item in recommended_actions[:3]:
+        if not isinstance(item, dict):
+          continue
+        function = str(item.get("function", "")).strip()
+        action = str(item.get("action", "")).strip()
+        horizon = str(item.get("horizon", "")).strip()
+        if function not in valid_functions or not action:
+          continue
+        if horizon not in valid_horizons:
+          horizon = "Strategic"
+        normalized_actions.append({
+            "function": function,
+            "action": action,
+            "horizon": horizon,
+        })
+
+    watch_indicators = di.get("watch_indicators") or []
+    if not isinstance(watch_indicators, list):
+      watch_indicators = []
+    watch_indicators = [str(item).strip() for item in watch_indicators if str(item).strip()][:5]
+
+    confidence = str(di.get("confidence", "LOW")).upper().strip()
+    if confidence not in {"HIGH", "MEDIUM", "LOW"}:
+      confidence = "LOW"
+
+    parsed["decision_intelligence"] = {
+        "event_type": str(di.get("event_type", "Other") or "Other").strip(),
+        "what_changed": str(di.get("what_changed", "") or "").strip(),
+        "why_it_matters": str(di.get("why_it_matters", "") or "").strip(),
+        "strategic_significance": str(di.get("strategic_significance", "") or "").strip(),
+        "functions_affected": functions_affected,
+        "recommended_actions": normalized_actions,
+        "watch_indicators": watch_indicators,
+        "risk_type": str(di.get("risk_type", "Other") or "Other").strip(),
+        "risk_rationale": str(di.get("risk_rationale", "") or "").strip(),
+        "opportunity": str(di.get("opportunity", "") or "").strip(),
+        "confidence": confidence,
+    }
+
+    ba = parsed.get("business_advisory") or {}
+    if not isinstance(ba, dict):
+      ba = {}
+    parsed["business_advisory"] = {
+        "qa_compliance": str(ba.get("qa_compliance", "") or "").strip(),
+        "supply_chain": str(ba.get("supply_chain", "") or "").strip(),
+        "export_strategy": str(ba.get("export_strategy", "") or "").strip(),
+    }
+
+    print("      🤖 Gemini decision intelligence successful")
     return parsed
 
   except json.JSONDecodeError as e:
@@ -437,8 +571,9 @@ def main():
             "categoryName": ai_data.get("categoryName", category_name),
             "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
             "summary": ai_data.get("summary", ""),
+            "decision_intelligence": ai_data.get("decision_intelligence", {}),
             "business_advisory": ai_data.get("business_advisory", {"qa_compliance": "", "supply_chain": "", "export_strategy": ""}),
-            "actionAdvisory": ai_data.get("actionAdvisory", f"Monitor {category_name} developments."),
+            "actionAdvisory": ai_data.get("actionAdvisory", ""),
             "url": article["url"],
             "published_date": article.get("published_date", ""),
             "timestamp": firestore.SERVER_TIMESTAMP if db else datetime.now(timezone.utc).isoformat(),
