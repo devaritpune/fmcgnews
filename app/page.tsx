@@ -329,7 +329,7 @@ export default function Home() {
       default:
         return <span className="bg-emerald-950/90 text-emerald-400 border border-emerald-700/80 text-xs px-2.5 py-1 rounded-md font-bold font-mono shrink-0">✅ LOW RISK</span>;
     }
-  };
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#070d19] text-slate-100 p-4 md:p-8 font-sans antialiased">
