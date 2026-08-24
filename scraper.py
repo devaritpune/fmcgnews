@@ -3,6 +3,7 @@ import os
 import re
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 from typing import Set, Tuple, Dict, Any, List, Optional
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -19,6 +20,9 @@ load_dotenv()
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "fmcgdesk")
 BULLETINS_COLLECTION = "bulletins"
 GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
+MAX_ARTICLE_AGE_DAYS = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
+MIN_CATEGORY_RELEVANCE_SCORE = int(os.getenv("MIN_CATEGORY_RELEVANCE_SCORE", "75"))
+MIN_BUSINESS_VALUE_SCORE = int(os.getenv("MIN_BUSINESS_VALUE_SCORE", "70"))
 
 
 # 2. Initialize Firebase Firestore Connection
@@ -327,6 +331,54 @@ def generate_document_id(sequence_num: int) -> str:
   return f"ART_{date_str}_{sequence_num:03d}"
 
 
+def evaluate_article_freshness(pub_date: str) -> Dict[str, Any]:
+  """Fail closed on stale/unknown RSS dates so old stories cannot enter the daily bulletin."""
+  raw = (pub_date or "").strip()
+  result = {
+      "is_fresh": False,
+      "age_days": None,
+      "max_age_days": MAX_ARTICLE_AGE_DAYS,
+      "published_at_iso": "",
+      "reason": "",
+  }
+
+  if not raw:
+    result["reason"] = "Missing RSS publication date."
+    return result
+
+  try:
+    published_dt = parsedate_to_datetime(raw)
+    if published_dt.tzinfo is None:
+      published_dt = published_dt.replace(tzinfo=timezone.utc)
+    published_dt = published_dt.astimezone(timezone.utc)
+  except (TypeError, ValueError, OverflowError) as e:
+    result["reason"] = f"Unparseable RSS publication date: {e}"
+    return result
+
+  now_utc = datetime.now(timezone.utc)
+  age_seconds = (now_utc - published_dt).total_seconds()
+  age_days = max(0, int(age_seconds // 86400))
+
+  result["published_at_iso"] = published_dt.isoformat()
+  result["age_days"] = age_days
+
+  # Allow up to 24 hours of clock/feed skew into the future.
+  if age_seconds < -86400:
+    result["reason"] = "RSS publication date is more than 24 hours in the future."
+    return result
+
+  if age_days > MAX_ARTICLE_AGE_DAYS:
+    result["reason"] = (
+        f"Article is {age_days} days old; daily bulletin maximum is "
+        f"{MAX_ARTICLE_AGE_DAYS} days."
+    )
+    return result
+
+  result["is_fresh"] = True
+  result["reason"] = f"Article age {age_days} day(s), within {MAX_ARTICLE_AGE_DAYS}-day freshness window."
+  return result
+
+
 def analyze_with_gemini(headline: str, description: str, category_name: str, category_emoji: str) -> Dict[str, Any]:
   """Generate strict category relevance plus evidence-grounded FMCG decision intelligence."""
   fallback_data = {
@@ -340,6 +392,12 @@ def analyze_with_gemini(headline: str, description: str, category_name: str, cat
           "relevance_score": 0,
           "suggested_category": "Other",
           "reason": "Gemini relevance validation was unavailable; article was not auto-approved.",
+          "business_relevance": {
+              "is_business_intelligence": False,
+              "strategic_value_score": 0,
+              "content_type": "Unknown",
+              "reason": "Gemini business-value validation was unavailable; article was not auto-approved.",
+          },
       },
       "decision_intelligence": {
           "event_type": "Other",
@@ -399,14 +457,27 @@ SCORING:
 75-89  = strong material target-category relevance.
 60-74  = plausible but indirect/ambiguous; reject.
 0-59   = weak, incidental, or wrong-category; reject.
-Python will require a score of at least 75 to save the bulletin.
+Python will require a category score of at least {MIN_CATEGORY_RELEVANCE_SCORE} to save the bulletin.
+
+BUSINESS INTELLIGENCE VALUE GATE:
+1. A category-relevant article is still NOT publishable unless it contains a concrete business/market event,
+   decision-relevant signal, regulation, pricing/cost movement, corporate action, capacity/supply development,
+   trade/export development, earnings/funding/M&A, distribution/channel change, product launch, or measurable
+   consumer-demand/market-share signal.
+2. Reject recipes, cooking/how-to pieces, nutrition/lifestyle explainers, generic product comparisons, health tips,
+   travel/food culture pieces, educational/current-affairs compilations, entertainment, and timeless evergreen guides.
+3. A consumer article may pass only when it reports a measurable demand, pricing, channel, market-share, or purchase
+   behaviour change that a business leader could act on.
+4. strategic_value_score: 90-100 = material executive signal; 70-89 = useful business intelligence;
+   50-69 = marginal/weak; 0-49 = non-business or evergreen content.
+Python will require is_business_intelligence=true and a strategic value score of at least {MIN_BUSINESS_VALUE_SCORE}.
 
 SUGGESTED CATEGORY must be one of:
 {allowed_categories} | Other
 Use Other when none of the supported categories is a good fit.
 
-Only if category_match is true should you generate full Decision Intelligence.
-If category_match is false, do NOT invent category-specific implications. Keep advisory/action fields empty,
+Only if category_match is true AND business_relevance.is_business_intelligence is true should you generate full Decision Intelligence.
+If either gate is false, do NOT invent category-specific implications. Keep advisory/action fields empty,
 keep functions/actions/watch indicators empty, and summarize only the factual source story.
 
 Analyze only the evidence available in the headline and description. Do not invent facts.
@@ -422,7 +493,13 @@ Produce ONLY one valid JSON object with this exact structure:
     "category_match": true,
     "relevance_score": 0,
     "suggested_category": "One supported category or Other",
-    "reason": "Concise evidence-based acceptance/rejection reason"
+    "reason": "Concise evidence-based acceptance/rejection reason",
+    "business_relevance": {{
+      "is_business_intelligence": true,
+      "strategic_value_score": 0,
+      "content_type": "Regulation | Pricing | Commodity | Corporate Action | Capacity | Supply Chain | Trade | Earnings | Fundraising | M&A | Product Launch | Distribution | Consumer Demand | Consumer Explainer | Recipe/How-To | Lifestyle/Health | Education | Other",
+      "reason": "Concise evidence-based business-value acceptance/rejection reason"
+    }}
   }},
   "decision_intelligence": {{
     "event_type": "IPO | Regulation | Commodity Price | Product Launch | M&A | Capacity Expansion | Supply Disruption | Earnings | Trade Policy | Other",
@@ -510,7 +587,27 @@ QUALITY RULES:
 
     is_fmcg_relevant = _strict_bool(relevance.get("is_fmcg_relevant", False))
     model_category_match = _strict_bool(relevance.get("category_match", False))
-    category_match = is_fmcg_relevant and model_category_match and relevance_score >= 75
+    category_match = (
+        is_fmcg_relevant
+        and model_category_match
+        and relevance_score >= MIN_CATEGORY_RELEVANCE_SCORE
+    )
+
+    business_relevance = relevance.get("business_relevance") or {}
+    if not isinstance(business_relevance, dict):
+      business_relevance = {}
+
+    try:
+      strategic_value_score = int(float(business_relevance.get("strategic_value_score", 0)))
+    except (TypeError, ValueError):
+      strategic_value_score = 0
+    strategic_value_score = max(0, min(100, strategic_value_score))
+
+    model_business_match = _strict_bool(business_relevance.get("is_business_intelligence", False))
+    is_business_intelligence = (
+        model_business_match
+        and strategic_value_score >= MIN_BUSINESS_VALUE_SCORE
+    )
 
     parsed["relevance"] = {
         "is_fmcg_relevant": is_fmcg_relevant,
@@ -518,6 +615,12 @@ QUALITY RULES:
         "relevance_score": relevance_score,
         "suggested_category": suggested_category,
         "reason": str(relevance.get("reason", "") or "").strip(),
+        "business_relevance": {
+            "is_business_intelligence": is_business_intelligence,
+            "strategic_value_score": strategic_value_score,
+            "content_type": str(business_relevance.get("content_type", "Unknown") or "Unknown").strip(),
+            "reason": str(business_relevance.get("reason", "") or "").strip(),
+        },
     }
 
     risk = str(parsed.get("riskLevel", "LOW")).upper().strip()
@@ -594,8 +697,8 @@ QUALITY RULES:
     if confidence not in {"HIGH", "MEDIUM", "LOW"}:
       confidence = "LOW"
 
-    if not category_match:
-      # Hard safety gate: wrong-category candidates cannot retain invented target-category advice.
+    if not category_match or not is_business_intelligence:
+      # Hard safety gate: wrong-category or low-business-value candidates cannot retain invented advice.
       functions_affected = []
       normalized_actions = []
       watch_indicators = []
@@ -619,9 +722,11 @@ QUALITY RULES:
           "supply_chain": "",
           "export_strategy": "",
       }
+      business_info = parsed["relevance"]["business_relevance"]
       print(
-          f"      🚫 Relevance gate rejected | score={relevance_score} | "
-          f"suggested={suggested_category} | {parsed['relevance']['reason'][:120]}"
+          f"      🚫 Intelligence gate rejected | category_score={relevance_score} | "
+          f"business_score={strategic_value_score} | type={business_info['content_type']} | "
+          f"suggested={suggested_category}"
       )
       return parsed
 
@@ -649,7 +754,7 @@ QUALITY RULES:
         "export_strategy": str(ba.get("export_strategy", "") or "").strip(),
     }
 
-    print(f"      ✅ Relevance gate passed | score={relevance_score}")
+    print(f"      ✅ Intelligence gate passed | category_score={relevance_score} | business_score={strategic_value_score}")
     print("      🤖 Gemini decision intelligence successful")
     return parsed
 
@@ -736,6 +841,8 @@ def main():
   processed_count = 0
   skipped_count = 0
   rejected_count = 0
+  freshness_rejected_count = 0
+  business_rejected_count = 0
   articles_by_category = {}
 
   # Optional safety limit for controlled manual GitHub Actions tests.
@@ -775,19 +882,40 @@ def main():
           skipped_count += 1
           continue
 
+        freshness = evaluate_article_freshness(article.get("published_date", ""))
+        if not freshness.get("is_fresh", False):
+          freshness_rejected_count += 1
+          print(
+              f"   🕒 Freshness rejected: {article['title'][:65]}... | "
+              f"age={freshness.get('age_days')} | {freshness.get('reason')}"
+          )
+          continue
+
         print(f"   🔎 Candidate: {article['title'][:70]}...")
 
-        # Gemini first performs a strict relevance/category gate, then produces intelligence only if relevant.
+        # Gemini performs category relevance + business-intelligence value gates in one call.
         ai_data = analyze_with_gemini(article["title"], article["raw_desc"], category_name, category_emoji)
         relevance = ai_data.get("relevance") or {}
         category_match = bool(relevance.get("category_match", False))
         relevance_score = int(relevance.get("relevance_score", 0) or 0)
+        business_relevance = relevance.get("business_relevance") or {}
+        business_match = bool(business_relevance.get("is_business_intelligence", False))
+        strategic_value_score = int(business_relevance.get("strategic_value_score", 0) or 0)
 
-        if not category_match or relevance_score < 75:
+        if (
+            not category_match
+            or relevance_score < MIN_CATEGORY_RELEVANCE_SCORE
+            or not business_match
+            or strategic_value_score < MIN_BUSINESS_VALUE_SCORE
+        ):
           rejected_count += 1
+          if category_match and relevance_score >= MIN_CATEGORY_RELEVANCE_SCORE:
+            business_rejected_count += 1
           print(
               f"      ⏭️ Rejected before Firestore | target={category_name} | "
-              f"score={relevance_score} | suggested={relevance.get('suggested_category', 'Other')}"
+              f"category_score={relevance_score} | business_score={strategic_value_score} | "
+              f"type={business_relevance.get('content_type', 'Unknown')} | "
+              f"suggested={relevance.get('suggested_category', 'Other')}"
           )
           # Do not add rejected candidates to global dedup sets: the same article may legitimately
           # match a different supported category later in this run.
@@ -816,6 +944,7 @@ def main():
             "category": ai_data.get("category", category_emoji),
             "categoryName": ai_data.get("categoryName", category_name),
             "relevance": relevance,
+            "freshness": freshness,
             "riskLevel": ai_data.get("riskLevel", "LOW"),
             "summary": ai_data.get("summary", ""),
             "decision_intelligence": ai_data.get("decision_intelligence", {}),
@@ -866,7 +995,9 @@ def main():
   print("✨ DAILY INGESTION SUMMARY")
   print("=" * 80)
   print(f"📈 Total New Bulletins Saved: {processed_count}")
-  print(f"🚫 Relevance/Category Rejected: {rejected_count}")
+  print(f"🕒 Freshness Rejected: {freshness_rejected_count}")
+  print(f"🚫 Intelligence Gate Rejected: {rejected_count}")
+  print(f"📉 Business-Value Rejected (after category pass): {business_rejected_count}")
   print(f"⏩ Duplicates Skipped: {skipped_count}")
   print("\n📋 By Category:")
   for cat, count in articles_by_category.items():
