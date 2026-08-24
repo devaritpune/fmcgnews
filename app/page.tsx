@@ -43,16 +43,67 @@ interface BusinessAdvisory {
   export_strategy?: string;
 }
 
+interface Freshness {
+  is_fresh: boolean;
+  age_days: number | null;
+  max_age_days: number;
+  published_at_iso: string;
+  reason: string;
+}
+
+interface BusinessRelevance {
+  is_business_intelligence: boolean;
+  strategic_value_score: number;
+  content_type: string;
+  reason: string;
+}
+
+interface Relevance {
+  is_fmcg_relevant: boolean;
+  category_match: boolean;
+  relevance_score: number;
+  suggested_category: string;
+  reason: string;
+  business_relevance: BusinessRelevance;
+}
+
+interface RecommendedAction {
+  function: string;
+  action: string;
+  horizon: string;
+}
+
+interface DecisionIntelligence {
+  event_type: string;
+  what_changed: string;
+  why_it_matters: string;
+  strategic_significance: string;
+  functions_affected: string[];
+  recommended_actions: RecommendedAction[];
+  watch_indicators: string[];
+  risk_type: string;
+  risk_rationale: string;
+  opportunity: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW" | string;
+}
+
 interface Article {
   id: string;
   title: string;
   category: string;
+  categoryName?: string;
   sub_category?: string;
   market_scope?: string;
   summary: string;
   full_content?: string;
   region: string;
+  geographicScope?: string;
+  states?: string[];
+  cities?: string[];
+  regionConfidence?: string;
+  regionEvidence?: string;
   published_at?: any;
+  published_date?: string;
   date?: any;
   timestamp?: any;
   createdDate?: string;
@@ -62,6 +113,9 @@ interface Article {
   url?: string;
   key_takeaway?: string;
   riskLevel?: string;
+  freshness?: Freshness;
+  relevance?: Relevance;
+  decision_intelligence?: DecisionIntelligence;
   business_advisory?: BusinessAdvisory;
   actionAdvisory?: string;
   language?: string;
@@ -248,16 +302,26 @@ export default function Home() {
             id: doc.id,
             title: data.title || "Untitled Market Bulletin",
             category: data.category || "📰",
+            categoryName: data.categoryName,
             summary: data.summary || "",
             full_content: data.summary || "",
             region: data.region || "Pan-India",
+            geographicScope: data.geographicScope,
+            states: Array.isArray(data.states) ? data.states : [],
+            cities: Array.isArray(data.cities) ? data.cities : [],
+            regionConfidence: data.regionConfidence,
+            regionEvidence: data.regionEvidence,
             timestamp: data.timestamp,
+            published_date: data.published_date,
             createdDate: data.createdDate,
             source: data.source || "Market Source",
             url: data.url || "",
             actionAdvisory: data.actionAdvisory || "",
             riskLevel: data.riskLevel || "MEDIUM",
-            business_advisory: data.business_advisory || {},
+            freshness: data.freshness || undefined,
+            relevance: data.relevance || undefined,
+            decision_intelligence: data.decision_intelligence || undefined,
+            business_advisory: data.business_advisory || undefined,
             language: data.language || "English",
           };
         });
@@ -379,10 +443,10 @@ export default function Home() {
               className="bg-transparent text-xs text-emerald-400 font-semibold focus:outline-none cursor-pointer"
             >
               <option value="All" className="bg-slate-900 text-white">IN All Regions (Pan-India)</option>
-              <option value="North" className="bg-slate-900 text-white">North India</option>
-              <option value="South" className="bg-slate-900 text-white">South India</option>
-              <option value="East" className="bg-slate-900 text-white">East India</option>
-              <option value="West" className="bg-slate-900 text-white">West India</option>
+              <option value="North India" className="bg-slate-900 text-white">North India</option>
+              <option value="South India" className="bg-slate-900 text-white">South India</option>
+              <option value="East India" className="bg-slate-900 text-white">East India</option>
+              <option value="West India" className="bg-slate-900 text-white">West India</option>
             </select>
           </div>
         </div>
@@ -632,6 +696,21 @@ export default function Home() {
                 <div className="bg-emerald-950/40 border border-emerald-800/60 p-4 rounded-xl text-xs text-emerald-300 space-y-1">
                   <strong className="text-emerald-400 uppercase font-mono block">💡 Executive Strategic Takeaway</strong>
                   <p className="text-slate-200 leading-relaxed">{selectedArticle.key_takeaway}</p>
+                </div>
+              )}
+
+              {selectedArticle.decision_intelligence && (
+                <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl space-y-3">
+                  <h5 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Decision Intelligence</h5>
+                  <div className="space-y-2 text-xs text-slate-300">
+                    <p><strong className="text-slate-100">Event Type:</strong> {selectedArticle.decision_intelligence.event_type || "—"}</p>
+                    <p><strong className="text-slate-100">Confidence:</strong> {selectedArticle.decision_intelligence.confidence || "—"}</p>
+                    <p><strong className="text-slate-100">What Changed:</strong> {selectedArticle.decision_intelligence.what_changed || "—"}</p>
+                    <p><strong className="text-slate-100">Why It Matters:</strong> {selectedArticle.decision_intelligence.why_it_matters || "—"}</p>
+                    {selectedArticle.actionAdvisory && (
+                      <p><strong className="text-slate-100">Action Advisory:</strong> {selectedArticle.actionAdvisory}</p>
+                    )}
+                  </div>
                 </div>
               )}
 
