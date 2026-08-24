@@ -2,6 +2,7 @@ import json
 import os
 import re
 import urllib.parse
+import time
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Set, Tuple, Dict, Any, List, Optional
@@ -23,6 +24,13 @@ GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 MAX_ARTICLE_AGE_DAYS = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
 MIN_CATEGORY_RELEVANCE_SCORE = int(os.getenv("MIN_CATEGORY_RELEVANCE_SCORE", "75"))
 MIN_BUSINESS_VALUE_SCORE = int(os.getenv("MIN_BUSINESS_VALUE_SCORE", "70"))
+GEMINI_MIN_REQUEST_INTERVAL_SECONDS = float(os.getenv("GEMINI_MIN_REQUEST_INTERVAL_SECONDS", "4.2"))
+GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "2"))
+GEMINI_RETRY_FALLBACK_SECONDS = float(os.getenv("GEMINI_RETRY_FALLBACK_SECONDS", "60"))
+
+# Sequential scraper process: remember the last Gemini request time so we stay below
+# free-tier requests-per-minute limits instead of bursting through candidates.
+_last_gemini_request_monotonic = 0.0
 
 
 # 2. Initialize Firebase Firestore Connection
@@ -379,6 +387,77 @@ def evaluate_article_freshness(pub_date: str) -> Dict[str, Any]:
   return result
 
 
+
+def _extract_gemini_retry_delay_seconds(error_text: str) -> float:
+  """Extract Gemini retry delay from a 429 error message, with a conservative fallback."""
+  patterns = (
+      r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)s",
+      r"Please retry in\s+(\d+(?:\.\d+)?)s",
+      r"retry in\s+(\d+(?:\.\d+)?)s",
+  )
+  for pattern in patterns:
+    match = re.search(pattern, error_text, flags=re.IGNORECASE)
+    if match:
+      try:
+        return max(1.0, float(match.group(1)))
+      except (TypeError, ValueError):
+        pass
+  return max(1.0, GEMINI_RETRY_FALLBACK_SECONDS)
+
+
+def _wait_for_gemini_rate_slot() -> None:
+  """Space sequential Gemini requests so the scraper does not burst above RPM quota."""
+  global _last_gemini_request_monotonic
+
+  if GEMINI_MIN_REQUEST_INTERVAL_SECONDS <= 0:
+    return
+
+  now = time.monotonic()
+  elapsed = now - _last_gemini_request_monotonic if _last_gemini_request_monotonic else None
+  if elapsed is not None and elapsed < GEMINI_MIN_REQUEST_INTERVAL_SECONDS:
+    sleep_seconds = GEMINI_MIN_REQUEST_INTERVAL_SECONDS - elapsed
+    print(f"      ⏳ Gemini pacing: waiting {sleep_seconds:.1f}s before next request")
+    time.sleep(sleep_seconds)
+
+
+def _generate_gemini_content_with_retry(prompt: str):
+  """Call Gemini with proactive pacing and bounded 429 retry/backoff."""
+  global _last_gemini_request_monotonic
+
+  max_attempts = max(1, GEMINI_MAX_RETRIES + 1)
+
+  for attempt in range(1, max_attempts + 1):
+    _wait_for_gemini_rate_slot()
+    _last_gemini_request_monotonic = time.monotonic()
+
+    try:
+      return gemini_client.models.generate_content(
+          model=GEMINI_MODEL_NAME,
+          contents=prompt,
+          config=types.GenerateContentConfig(
+              response_mime_type="application/json"
+          ),
+      )
+    except Exception as e:
+      error_text = str(e)
+      is_rate_limited = "429" in error_text or "RESOURCE_EXHAUSTED" in error_text.upper()
+
+      if not is_rate_limited or attempt >= max_attempts:
+        raise
+
+      retry_seconds = _extract_gemini_retry_delay_seconds(error_text)
+      # Add a small safety margin so we do not retry exactly on the quota boundary.
+      retry_seconds += 1.0
+      print(
+          f"      ⏳ Gemini rate limit hit (attempt {attempt}/{max_attempts}). "
+          f"Retrying in {retry_seconds:.1f}s..."
+      )
+      time.sleep(retry_seconds)
+      # The explicit backoff already exceeds normal request pacing, so retry immediately afterward.
+      _last_gemini_request_monotonic = time.monotonic() - max(0.0, GEMINI_MIN_REQUEST_INTERVAL_SECONDS)
+
+  raise RuntimeError("Gemini retry loop exhausted unexpectedly.")
+
 def analyze_with_gemini(headline: str, description: str, category_name: str, category_emoji: str) -> Dict[str, Any]:
   """Generate strict category relevance plus evidence-grounded FMCG decision intelligence."""
   fallback_data = {
@@ -537,13 +616,7 @@ QUALITY RULES:
 """
 
   try:
-    response = gemini_client.models.generate_content(
-        model=GEMINI_MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        ),
-    )
+    response = _generate_gemini_content_with_retry(prompt)
 
     text = (response.text or "").strip()
     if not text:
@@ -976,7 +1049,6 @@ def main():
         existing_titles.add(clean_title)
 
         # Rate limiting to avoid IP blocks (100ms per accepted article)
-        import time
         time.sleep(0.1)
 
         if test_limit is not None and processed_count >= test_limit:
