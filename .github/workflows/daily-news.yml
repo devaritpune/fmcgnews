@@ -8,21 +8,20 @@ on:
     # Manual safety control: leave blank for full run, or enter a small number (for example 3).
     inputs:
       test_limit:
-        description: 'Maximum NEW bulletins to ingest (blank = full production run)'
+        description: 'Maximum SAVED bulletins to ingest (blank = full production run)'
         required: false
         default: ''
         type: string
   workflow_call:
     inputs:
       test_limit:
-        description: 'Maximum NEW bulletins to ingest (blank = full production run)'
+        description: 'Maximum SAVED bulletins to ingest (blank = full production run)'
         required: false
         default: ''
         type: string
 
 env:
   PYTHON_VERSION: '3.11'
-  LOG_FILE: scraper_run_$(date +%Y%m%d_%H%M%S).log
 
 jobs:
   scrape-news:
@@ -70,17 +69,21 @@ jobs:
         run: |
           echo "🚀 Starting FMCG News Scraper at $(date)"
           if [ -n "${SCRAPER_TEST_LIMIT}" ]; then
-            echo "🧪 Controlled test mode requested: maximum ${SCRAPER_TEST_LIMIT} new bulletin(s)."
+            echo "🧪 Controlled test mode requested: maximum ${SCRAPER_TEST_LIMIT} SAVED bulletin(s)."
           else
             echo "🚀 Full production ingestion mode."
           fi
           echo "Scraping 8 FMCG categories across 14+ news outlets..."
-          
-          # Run the scraper with timeout and capture output.
-          # Capture the Python/timeout exit code even though output is piped through tee.
+
+          # Create the logfile at runtime; shell expressions do not execute in top-level YAML env.
+          LOG_FILE="scraper_run_$(date +%Y%m%d_%H%M%S).log"
+          echo "📝 Log file: ${LOG_FILE}"
+
+          # Relevance gating can evaluate many candidates before accepting a bulletin.
+          # Allow up to 25 minutes while preserving the job-level 30-minute safety limit.
           set +e
           set -o pipefail
-          timeout 600 python scraper.py 2>&1 | tee "${LOG_FILE}"
+          timeout 1500 python scraper.py 2>&1 | tee "${LOG_FILE}"
           SCRAPER_EXIT_CODE=${PIPESTATUS[0]}
           set -e
           
@@ -91,7 +94,7 @@ jobs:
           echo "log_file=${LOG_FILE}" >> $GITHUB_OUTPUT
           
           if [ $SCRAPER_EXIT_CODE -eq 124 ]; then
-            echo "⏱️ ERROR: Scraper timed out after 10 minutes"
+            echo "⏱️ ERROR: Scraper timed out after 25 minutes"
             exit 1
           elif [ $SCRAPER_EXIT_CODE -ne 0 ]; then
             echo "❌ Scraper failed with exit code: $SCRAPER_EXIT_CODE"
@@ -104,16 +107,18 @@ jobs:
         if: always()
         run: |
           echo "=== SCRAPER EXECUTION SUMMARY ==="
-          if [ -f "${LOG_FILE}" ]; then
+          LOG_FILE="${{ steps.scraper.outputs.log_file }}"
+
+          if [ -n "${LOG_FILE}" ] && [ -f "${LOG_FILE}" ]; then
             echo "Log file: ${LOG_FILE}"
             echo ""
             echo "--- Key Metrics ---"
-            grep -i "total\|processed\|skipped\|saved\|error" ${LOG_FILE} || echo "No summary metrics found"
+            grep -Ei "total|processed|skipped|saved|rejected|error" "${LOG_FILE}" || echo "No summary metrics found"
             echo ""
             echo "--- Last 20 lines of output ---"
-            tail -n 20 ${LOG_FILE}
+            tail -n 20 "${LOG_FILE}" || true
           else
-            echo "Log file not found"
+            echo "Log file not found: ${LOG_FILE}"
           fi
 
       - name: 📤 Upload Logs as Artifact
@@ -126,14 +131,14 @@ jobs:
           if-no-files-found: warn
 
       - name: 🔔 Notify on Success
-        if: success()
+        if: steps.scraper.outcome == 'success'
         run: |
           echo "✅ Daily FMCG News Scraper ran successfully!"
           echo "Timestamp: $(date)"
           echo "Scraped 8 FMCG categories from 14+ news outlets"
 
       - name: 🚨 Notify on Failure
-        if: failure()
+        if: steps.scraper.outcome == 'failure'
         run: |
           echo "❌ FMCG News Scraper failed!"
           echo "Exit code: ${{ steps.scraper.outputs.exit_code }}"
