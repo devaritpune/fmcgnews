@@ -328,12 +328,19 @@ def generate_document_id(sequence_num: int) -> str:
 
 
 def analyze_with_gemini(headline: str, description: str, category_name: str, category_emoji: str) -> Dict[str, Any]:
-  """Generate evidence-grounded FMCG decision intelligence while preserving legacy fields."""
+  """Generate strict category relevance plus evidence-grounded FMCG decision intelligence."""
   fallback_data = {
       "category": category_emoji,
       "categoryName": category_name,
-      "riskLevel": "MEDIUM",
+      "riskLevel": "LOW",
       "summary": description[:200] if description else headline,
+      "relevance": {
+          "is_fmcg_relevant": False,
+          "category_match": False,
+          "relevance_score": 0,
+          "suggested_category": "Other",
+          "reason": "Gemini relevance validation was unavailable; article was not auto-approved.",
+      },
       "decision_intelligence": {
           "event_type": "Other",
           "what_changed": description[:300] if description else headline,
@@ -358,86 +365,97 @@ def analyze_with_gemini(headline: str, description: str, category_name: str, cat
   if not gemini_client:
     return fallback_data
 
+  allowed_categories = " | ".join(FMCG_SEARCH_CATEGORIES.keys())
+
   prompt = f"""
-You are a senior FMCG Decision Intelligence Analyst supporting C-level leaders
-across Strategy, Sales, Marketing, Procurement, Supply Chain, Manufacturing,
-QA, Regulatory, Finance, International Business and R&D.
+You are a strict FMCG/CPG news relevance gate and senior Decision Intelligence Analyst.
 
-Focus Category: {category_name}
-Headline: {headline}
-Description: {description}
+TARGET CATEGORY: {category_name}
+HEADLINE: {headline}
+DESCRIPTION: {description}
 
-Your task is NOT to produce generic FMCG recommendations.
+IMPORTANT: The RSS search that produced this candidate is noisy. The target category may be WRONG.
+Your first responsibility is to independently decide whether this article should be admitted into the
+FMCG News Desk under TARGET CATEGORY. Do not assume relevance merely because the search query found it.
 
-Analyze only the evidence available in the headline and description.
-Do not invent facts, countries, regulations, commodities, companies,
-consumer trends or operational issues that are not supported by the source.
-If the source is too thin to support a strong conclusion, lower confidence
-and keep recommendations conservative instead of guessing.
+RELEVANCE GATE RULES:
+1. category_match may be true ONLY when the article's primary subject, product, commodity, regulation,
+   company action, supply issue, demand signal, pricing event, market development, or competitive impact
+   is directly and materially relevant to TARGET CATEGORY.
+2. A shared company name, generic FMCG reference, generic word such as food/market/retail, or a regulator
+   such as FSSAI is NOT enough by itself to make an article relevant to TARGET CATEGORY.
+3. Do NOT stretch a story from another category into TARGET CATEGORY by saying it "may set a precedent",
+   "could have broader implications", or "shares a regulatory environment".
+4. Alcoholic beverages, unrelated corporate notices, technology-company notices, politics without direct
+   category impact, entertainment, general economy, unrelated agriculture, and unrelated international
+   affairs must be rejected for TARGET CATEGORY.
+5. Cross-category articles may be accepted only when TARGET CATEGORY is explicitly and materially involved.
+6. Macro/commodity/regulatory stories may be accepted when the evidence explicitly shows a material impact
+   on TARGET CATEGORY in India.
+7. If evidence is weak or ambiguous, reject. Quality is more important than article volume.
 
-First identify the type of business event.
-Then determine why it matters to the selected FMCG category.
-Then identify only the business functions genuinely affected by this event.
-Do NOT force QA, Supply Chain or Export recommendations if they are not relevant.
+SCORING:
+90-100 = direct, unmistakable target-category article.
+75-89  = strong material target-category relevance.
+60-74  = plausible but indirect/ambiguous; reject.
+0-59   = weak, incidental, or wrong-category; reject.
+Python will require a score of at least 75 to save the bulletin.
+
+SUGGESTED CATEGORY must be one of:
+{allowed_categories} | Other
+Use Other when none of the supported categories is a good fit.
+
+Only if category_match is true should you generate full Decision Intelligence.
+If category_match is false, do NOT invent category-specific implications. Keep advisory/action fields empty,
+keep functions/actions/watch indicators empty, and summarize only the factual source story.
+
+Analyze only the evidence available in the headline and description. Do not invent facts.
 
 Produce ONLY one valid JSON object with this exact structure:
-
 {{
   "category": "{category_emoji}",
   "categoryName": "{category_name}",
-  "riskLevel": "HIGH, MEDIUM, or LOW",
-  "summary": "Two concise sentences. Sentence 1: factual development. Sentence 2: direct business implication.",
+  "riskLevel": "HIGH | MEDIUM | LOW",
+  "summary": "Two concise evidence-grounded sentences.",
+  "relevance": {{
+    "is_fmcg_relevant": true,
+    "category_match": true,
+    "relevance_score": 0,
+    "suggested_category": "One supported category or Other",
+    "reason": "Concise evidence-based acceptance/rejection reason"
+  }},
   "decision_intelligence": {{
     "event_type": "IPO | Regulation | Commodity Price | Product Launch | M&A | Capacity Expansion | Supply Disruption | Earnings | Trade Policy | Other",
-    "what_changed": "1-2 sentences describing the actual development.",
-    "why_it_matters": "1-2 sentences explaining the business relevance to this FMCG category.",
-    "strategic_significance": "1-2 sentences describing implications for competition, cost, demand, regulation, channel, investment, capability or market structure.",
-    "functions_affected": [
-      "Only include relevant functions from: Strategy, Sales, Marketing, Procurement, Supply Chain, Manufacturing, QA, Regulatory, Finance, International Business, R&D"
-    ],
+    "what_changed": "1-2 factual sentences.",
+    "why_it_matters": "Direct target-category relevance only; empty if rejected.",
+    "strategic_significance": "Evidence-grounded strategic implication; empty if rejected.",
+    "functions_affected": ["Only use: Strategy, Sales, Marketing, Procurement, Supply Chain, Manufacturing, QA, Regulatory, Finance, International Business, R&D"],
     "recommended_actions": [
       {{
         "function": "Relevant business function",
-        "action": "Specific action supported by this article",
+        "action": "Specific evidence-grounded action",
         "horizon": "Immediate | 30 Days | 90 Days | Strategic"
       }}
     ],
-    "watch_indicators": [
-      "Specific next signal management should monitor"
-    ],
+    "watch_indicators": ["Specific next signal"],
     "risk_type": "Competitive | Regulatory | Supply | Cost | Demand | Financial | Reputation | Operational | Other",
-    "risk_rationale": "Explain why the risk level was assigned.",
-    "opportunity": "Specific opportunity supported by the article, or empty string if none.",
+    "risk_rationale": "Why the risk level is justified; empty if rejected.",
+    "opportunity": "Specific opportunity or empty string.",
     "confidence": "HIGH | MEDIUM | LOW"
   }},
   "business_advisory": {{
-    "qa_compliance": "Only populate if QA or regulatory compliance is materially relevant; otherwise empty string.",
-    "supply_chain": "Only populate if procurement, logistics, supply or inventory is materially relevant; otherwise empty string.",
-    "export_strategy": "Only populate if exports, trade policy, foreign markets or international business is materially relevant; otherwise empty string."
+    "qa_compliance": "Only if materially relevant; otherwise empty string.",
+    "supply_chain": "Only if materially relevant; otherwise empty string.",
+    "export_strategy": "Only if materially relevant; otherwise empty string."
   }},
-  "actionAdvisory": "One concise C-level action based only on this article."
+  "actionAdvisory": "One concise C-level action, or empty string if rejected."
 }}
 
-RISK GUIDANCE:
-HIGH = likely material near-term impact on revenue, margin, supply continuity,
-regulatory exposure, market access or competitive position.
-MEDIUM = meaningful development requiring monitoring or selective action,
-but not an immediate material threat.
-LOW = informational or early-stage development with limited current business impact.
-
-CONFIDENCE GUIDANCE:
-HIGH = the source clearly supports the implication.
-MEDIUM = the implication is reasonable but partly inferential.
-LOW = the source is too thin for strong conclusions.
-
 QUALITY RULES:
-- Be article-specific and evidence-grounded.
-- Avoid boilerplate and generic FMCG advice.
-- Do not repeat the same recommendation across functions.
-- Do not manufacture unsupported tactical advice.
-- Prefer 1-3 strong recommended actions over many weak ones.
-- Use empty strings for irrelevant legacy advisory fields.
-- Keep functions_affected, recommended_actions and watch_indicators concise.
+- Be strict. False positives damage the product more than missing a marginal article.
+- Never rationalize a wrong-category story into the target category.
+- Prefer rejection when the headline/description do not contain enough evidence.
+- Keep recommendations conditional when the source does not establish company-specific exposure.
 - Output valid JSON only.
 """
 
@@ -467,13 +485,44 @@ QUALITY RULES:
       print("   ⚠️ Gemini returned JSON that was not an object.")
       return fallback_data
 
-    parsed["category"] = parsed.get("category", category_emoji)
+    parsed["category"] = category_emoji
     parsed["categoryName"] = category_name
 
-    risk = str(parsed.get("riskLevel", "MEDIUM")).upper().strip()
-    parsed["riskLevel"] = risk if risk in {"HIGH", "MEDIUM", "LOW"} else "MEDIUM"
-    parsed["summary"] = parsed.get("summary") or fallback_data["summary"]
-    parsed["actionAdvisory"] = str(parsed.get("actionAdvisory") or "").strip()
+    relevance = parsed.get("relevance") or {}
+    if not isinstance(relevance, dict):
+      relevance = {}
+
+    def _strict_bool(value: Any) -> bool:
+      if isinstance(value, bool):
+        return value
+      return str(value).strip().lower() in {"true", "yes", "1"}
+
+    try:
+      relevance_score = int(float(relevance.get("relevance_score", 0)))
+    except (TypeError, ValueError):
+      relevance_score = 0
+    relevance_score = max(0, min(100, relevance_score))
+
+    supported_categories = set(FMCG_SEARCH_CATEGORIES.keys()) | {"Other"}
+    suggested_category = str(relevance.get("suggested_category", "Other") or "Other").strip()
+    if suggested_category not in supported_categories:
+      suggested_category = "Other"
+
+    is_fmcg_relevant = _strict_bool(relevance.get("is_fmcg_relevant", False))
+    model_category_match = _strict_bool(relevance.get("category_match", False))
+    category_match = is_fmcg_relevant and model_category_match and relevance_score >= 75
+
+    parsed["relevance"] = {
+        "is_fmcg_relevant": is_fmcg_relevant,
+        "category_match": category_match,
+        "relevance_score": relevance_score,
+        "suggested_category": suggested_category,
+        "reason": str(relevance.get("reason", "") or "").strip(),
+    }
+
+    risk = str(parsed.get("riskLevel", "LOW")).upper().strip()
+    parsed["riskLevel"] = risk if risk in {"HIGH", "MEDIUM", "LOW"} else "LOW"
+    parsed["summary"] = str(parsed.get("summary") or fallback_data["summary"]).strip()
 
     di = parsed.get("decision_intelligence") or {}
     if not isinstance(di, dict):
@@ -484,15 +533,38 @@ QUALITY RULES:
         "Manufacturing", "QA", "Regulatory", "Finance",
         "International Business", "R&D"
     }
+    function_aliases = {
+        "quality assurance": "QA",
+        "quality": "QA",
+        "qa & compliance": "QA",
+        "qa/compliance": "QA",
+        "compliance": "Regulatory",
+        "legal & regulatory": "Regulatory",
+        "regulatory affairs": "Regulatory",
+        "research & development": "R&D",
+        "research and development": "R&D",
+        "international": "International Business",
+        "exports": "International Business",
+        "export": "International Business",
+        "supply-chain": "Supply Chain",
+        "operations": "Manufacturing",
+    }
     valid_horizons = {"Immediate", "30 Days", "90 Days", "Strategic"}
+
+    def _normalize_function(value: Any) -> str:
+      raw = str(value or "").strip()
+      if raw in valid_functions:
+        return raw
+      return function_aliases.get(raw.lower(), "")
 
     functions_affected = di.get("functions_affected") or []
     if not isinstance(functions_affected, list):
       functions_affected = []
     functions_affected = [
-        str(item).strip() for item in functions_affected
-        if str(item).strip() in valid_functions
-    ][:6]
+        normalized for item in functions_affected
+        if (normalized := _normalize_function(item))
+    ]
+    functions_affected = list(dict.fromkeys(functions_affected))[:6]
 
     recommended_actions = di.get("recommended_actions") or []
     normalized_actions = []
@@ -500,10 +572,10 @@ QUALITY RULES:
       for item in recommended_actions[:3]:
         if not isinstance(item, dict):
           continue
-        function = str(item.get("function", "")).strip()
+        function = _normalize_function(item.get("function", ""))
         action = str(item.get("action", "")).strip()
         horizon = str(item.get("horizon", "")).strip()
-        if function not in valid_functions or not action:
+        if not function or not action:
           continue
         if horizon not in valid_horizons:
           horizon = "Strategic"
@@ -522,6 +594,38 @@ QUALITY RULES:
     if confidence not in {"HIGH", "MEDIUM", "LOW"}:
       confidence = "LOW"
 
+    if not category_match:
+      # Hard safety gate: wrong-category candidates cannot retain invented target-category advice.
+      functions_affected = []
+      normalized_actions = []
+      watch_indicators = []
+      parsed["riskLevel"] = "LOW"
+      parsed["actionAdvisory"] = ""
+      parsed["decision_intelligence"] = {
+          "event_type": str(di.get("event_type", "Other") or "Other").strip(),
+          "what_changed": str(di.get("what_changed", "") or "").strip(),
+          "why_it_matters": "",
+          "strategic_significance": "",
+          "functions_affected": [],
+          "recommended_actions": [],
+          "watch_indicators": [],
+          "risk_type": "Other",
+          "risk_rationale": "",
+          "opportunity": "",
+          "confidence": confidence,
+      }
+      parsed["business_advisory"] = {
+          "qa_compliance": "",
+          "supply_chain": "",
+          "export_strategy": "",
+      }
+      print(
+          f"      🚫 Relevance gate rejected | score={relevance_score} | "
+          f"suggested={suggested_category} | {parsed['relevance']['reason'][:120]}"
+      )
+      return parsed
+
+    parsed["actionAdvisory"] = str(parsed.get("actionAdvisory") or "").strip()
     parsed["decision_intelligence"] = {
         "event_type": str(di.get("event_type", "Other") or "Other").strip(),
         "what_changed": str(di.get("what_changed", "") or "").strip(),
@@ -545,6 +649,7 @@ QUALITY RULES:
         "export_strategy": str(ba.get("export_strategy", "") or "").strip(),
     }
 
+    print(f"      ✅ Relevance gate passed | score={relevance_score}")
     print("      🤖 Gemini decision intelligence successful")
     return parsed
 
@@ -554,6 +659,7 @@ QUALITY RULES:
   except Exception as e:
     print(f"   ⚠️ Gemini API Error: {e}")
     return fallback_data
+
 
 def fetch_targeted_outlet_news(outlet: Dict[str, str], category_name: str, category_keywords: str) -> List[Dict[str, str]]:
   """Fetch news for a specific FMCG category from a given outlet."""
@@ -629,6 +735,7 @@ def main():
   current_sequence, existing_urls, existing_titles = get_existing_bulletin_data(db)
   processed_count = 0
   skipped_count = 0
+  rejected_count = 0
   articles_by_category = {}
 
   # Optional safety limit for controlled manual GitHub Actions tests.
@@ -640,7 +747,7 @@ def main():
       parsed_limit = int(test_limit_raw)
       if parsed_limit > 0:
         test_limit = parsed_limit
-        print(f"🧪 TEST MODE ACTIVE: stopping after {test_limit} new bulletin(s).")
+        print(f"🧪 TEST MODE ACTIVE: stopping after {test_limit} SAVED bulletin(s).")
       else:
         print(f"⚠️ Ignoring non-positive SCRAPER_TEST_LIMIT={test_limit_raw!r}; running full ingestion.")
     except ValueError:
@@ -658,25 +765,39 @@ def main():
     # Fetch from all outlets for this category
     for outlet in TARGET_OUTLETS:
       articles = fetch_targeted_outlet_news(outlet, category_name, category_keywords)
-      
+
       for article in articles:
         clean_url = article["url"].strip().lower()
         clean_title = article["title"].strip().lower()
 
-        # Skip duplicates
+        # Skip records that have already been accepted/saved recently.
         if not clean_title or not clean_url or (clean_url in existing_urls) or (clean_title in existing_titles):
           skipped_count += 1
+          continue
+
+        print(f"   🔎 Candidate: {article['title'][:70]}...")
+
+        # Gemini first performs a strict relevance/category gate, then produces intelligence only if relevant.
+        ai_data = analyze_with_gemini(article["title"], article["raw_desc"], category_name, category_emoji)
+        relevance = ai_data.get("relevance") or {}
+        category_match = bool(relevance.get("category_match", False))
+        relevance_score = int(relevance.get("relevance_score", 0) or 0)
+
+        if not category_match or relevance_score < 75:
+          rejected_count += 1
+          print(
+              f"      ⏭️ Rejected before Firestore | target={category_name} | "
+              f"score={relevance_score} | suggested={relevance.get('suggested_category', 'Other')}"
+          )
+          # Do not add rejected candidates to global dedup sets: the same article may legitimately
+          # match a different supported category later in this run.
           continue
 
         current_sequence += 1
         processed_count += 1
         articles_by_category[category_name] += 1
-
         doc_id = generate_document_id(current_sequence)
-        print(f"   📄 [{doc_id}] {article['title'][:55]}...")
-
-        # Analyze with Gemini for this specific category
-        ai_data = analyze_with_gemini(article["title"], article["raw_desc"], category_name, category_emoji)
+        print(f"   📄 [{doc_id}] ACCEPTED: {article['title'][:55]}...")
 
         # Region Intelligence V2: classify from article evidence, never from publisher location.
         geography = detect_geography_from_text(f"{article['title']} {article.get('raw_desc','')}")
@@ -694,7 +815,8 @@ def main():
             "regionEvidence": geography.get("regionEvidence", ""),
             "category": ai_data.get("category", category_emoji),
             "categoryName": ai_data.get("categoryName", category_name),
-            "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
+            "relevance": relevance,
+            "riskLevel": ai_data.get("riskLevel", "LOW"),
             "summary": ai_data.get("summary", ""),
             "decision_intelligence": ai_data.get("decision_intelligence", {}),
             "business_advisory": ai_data.get("business_advisory", {"qa_compliance": "", "supply_chain": "", "export_strategy": ""}),
@@ -711,39 +833,45 @@ def main():
             db.collection(BULLETINS_COLLECTION).document(doc_id).set(doc_payload)
             print(f"      ✅ Saved: {doc_id}")
           except Exception as e:
-            print(f"      ❌ Error: {str(e)[:50]}")
+            print(f"      ❌ Error: {str(e)[:80]}")
+            # A failed write must not count as successfully processed or consume dedup state.
+            processed_count -= 1
+            articles_by_category[category_name] -= 1
+            current_sequence -= 1
+            continue
         else:
           print(f"      ⏭️ Dry run (no Firestore)")
 
-        # Add to dedup tracking
+        # Add only accepted/saved articles to global dedup tracking.
         existing_urls.add(clean_url)
         existing_titles.add(clean_title)
 
-        # Rate limiting to avoid IP blocks (100ms per article)
+        # Rate limiting to avoid IP blocks (100ms per accepted article)
         import time
         time.sleep(0.1)
 
         if test_limit is not None and processed_count >= test_limit:
-          print(f"   🧪 Test limit reached ({processed_count}/{test_limit}). Stopping controlled run.")
+          print(f"   🧪 Test limit reached ({processed_count}/{test_limit}) SAVED bulletins. Stopping controlled run.")
           break
 
       if test_limit is not None and processed_count >= test_limit:
         break
 
-    print(f"   ✅ {category_name}: {articles_by_category[category_name]} new articles\n")
+    print(f"   ✅ {category_name}: {articles_by_category[category_name]} accepted articles\n")
 
     if test_limit is not None and processed_count >= test_limit:
       break
 
   print("=" * 80)
-  print(f"✨ DAILY INGESTION SUMMARY")
+  print("✨ DAILY INGESTION SUMMARY")
   print("=" * 80)
-  print(f"📈 Total New Bulletins: {processed_count}")
+  print(f"📈 Total New Bulletins Saved: {processed_count}")
+  print(f"🚫 Relevance/Category Rejected: {rejected_count}")
   print(f"⏩ Duplicates Skipped: {skipped_count}")
-  print(f"\n📋 By Category:")
+  print("\n📋 By Category:")
   for cat, count in articles_by_category.items():
     emoji = FMCG_SEARCH_CATEGORIES[cat]["category"]
-    print(f"   {emoji} {cat}: {count} articles")
+    print(f"   {emoji} {cat}: {count} accepted articles")
   print("=" * 80 + "\n")
 
 # Standard Python entry point
