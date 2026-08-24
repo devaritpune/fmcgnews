@@ -132,13 +132,19 @@ TARGET_OUTLETS = [
   {"name": "Moneycontrol", "region": "National", "domain": "moneycontrol.com"},
 ]
 
-# Map Indian states to broad regions to improve geographic tagging
+# Region Intelligence V2: infer article geography from article text, not publisher location.
+# Keep region values aligned with the frontend filters.
 STATE_TO_REGION = {
   "uttar pradesh": "North India",
   "punjab": "North India",
   "haryana": "North India",
   "delhi": "North India",
   "rajasthan": "North India",
+  "uttarakhand": "North India",
+  "himachal pradesh": "North India",
+  "jammu and kashmir": "North India",
+  "jammu & kashmir": "North India",
+  "ladakh": "North India",
   "maharashtra": "West India",
   "goa": "West India",
   "gujarat": "West India",
@@ -147,22 +153,120 @@ STATE_TO_REGION = {
   "tamil nadu": "South India",
   "andhra pradesh": "South India",
   "telangana": "South India",
+  "puducherry": "South India",
   "odisha": "East India",
+  "orissa": "East India",
   "west bengal": "East India",
   "assam": "East India",
   "bihar": "East India",
   "jharkhand": "East India",
+  "sikkim": "East India",
+  "arunachal pradesh": "East India",
+  "meghalaya": "East India",
+  "manipur": "East India",
+  "mizoram": "East India",
+  "nagaland": "East India",
+  "tripura": "East India",
 }
 
-def detect_region_from_text(text: str, default_region: Optional[str] = None) -> Optional[str]:
-  if not text:
-    return default_region
-  lower = text.lower()
-  for state, region in STATE_TO_REGION.items():
-    if state in lower:
-      return region
-  return default_region
+CITY_TO_REGION = {
+  # North
+  "new delhi": "North India", "delhi": "North India", "gurugram": "North India",
+  "gurgaon": "North India", "noida": "North India", "lucknow": "North India",
+  "kanpur": "North India", "jaipur": "North India", "chandigarh": "North India",
+  "ludhiana": "North India", "amritsar": "North India", "dehradun": "North India",
+  "shimla": "North India", "srinagar": "North India", "jammu": "North India",
+  # West
+  "mumbai": "West India", "pune": "West India", "nagpur": "West India",
+  "nashik": "West India", "nasik": "West India", "aurangabad": "West India",
+  "ahmedabad": "West India", "surat": "West India", "vadodara": "West India",
+  "rajkot": "West India", "panaji": "West India",
+  # South
+  "bengaluru": "South India", "bangalore": "South India", "chennai": "South India",
+  "hyderabad": "South India", "kochi": "South India", "cochin": "South India",
+  "thiruvananthapuram": "South India", "coimbatore": "South India",
+  "mysuru": "South India", "mysore": "South India", "vijayawada": "South India",
+  "visakhapatnam": "South India", "vizag": "South India", "mangaluru": "South India",
+  # East / North-East
+  "kolkata": "East India", "calcutta": "East India", "bhubaneswar": "East India",
+  "cuttack": "East India", "patna": "East India", "ranchi": "East India",
+  "guwahati": "East India", "gangtok": "East India", "shillong": "East India",
+  "imphal": "East India", "agartala": "East India",
+}
 
+NATIONAL_GEO_SIGNALS = (
+  "pan-india", "pan india", "nationwide", "across india", "across the country",
+  "central government", "union government", "government of india", "sebi", "fssai",
+  "reserve bank of india", " rbi ", "india-wide", "national market",
+)
+
+
+def _contains_geo_term(text: str, term: str) -> bool:
+  """Match a geography term as words so short names such as Goa do not match unrelated words."""
+  return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text, flags=re.IGNORECASE) is not None
+
+
+def detect_geography_from_text(text: str) -> Dict[str, Any]:
+  """Return evidence-based geographic metadata for an article.
+
+  Publisher location is intentionally ignored. If no explicit regional evidence exists,
+  the article is treated as National rather than inheriting the outlet's home region.
+  """
+  cleaned = re.sub(r"\s+", " ", text or "").strip()
+  lower = f" {cleaned.lower()} "
+
+  matched_states: List[str] = []
+  matched_cities: List[str] = []
+  matched_regions: List[str] = []
+
+  for state, region in STATE_TO_REGION.items():
+    if _contains_geo_term(cleaned, state):
+      matched_states.append(state.title())
+      matched_regions.append(region)
+
+  for city, region in CITY_TO_REGION.items():
+    if _contains_geo_term(cleaned, city):
+      matched_cities.append(city.title())
+      matched_regions.append(region)
+
+  unique_regions = list(dict.fromkeys(matched_regions))
+
+  if len(unique_regions) == 1:
+    evidence_parts = matched_states + matched_cities
+    return {
+        "geographicScope": "Regional",
+        "region": unique_regions[0],
+        "states": list(dict.fromkeys(matched_states)),
+        "cities": list(dict.fromkeys(matched_cities)),
+        "regionConfidence": "HIGH",
+        "regionEvidence": ", ".join(evidence_parts[:6]),
+    }
+
+  if len(unique_regions) > 1:
+    evidence_parts = matched_states + matched_cities
+    return {
+        "geographicScope": "Multi-Region",
+        "region": "National",
+        "states": list(dict.fromkeys(matched_states)),
+        "cities": list(dict.fromkeys(matched_cities)),
+        "regionConfidence": "MEDIUM",
+        "regionEvidence": ", ".join(evidence_parts[:6]),
+    }
+
+  national_evidence = next((signal.strip() for signal in NATIONAL_GEO_SIGNALS if signal in lower), "")
+  return {
+      "geographicScope": "National",
+      "region": "National",
+      "states": [],
+      "cities": [],
+      "regionConfidence": "MEDIUM" if national_evidence else "LOW",
+      "regionEvidence": national_evidence or "No explicit regional geography found in headline/RSS description.",
+  }
+
+
+def detect_region_from_text(text: str, default_region: Optional[str] = None) -> Optional[str]:
+  """Backward-compatible wrapper. Outlet-region fallback is deliberately ignored."""
+  return detect_geography_from_text(text)["region"]
 
 def clean_text(raw_text: str) -> str:
   if not raw_text:
@@ -574,14 +678,20 @@ def main():
         # Analyze with Gemini for this specific category
         ai_data = analyze_with_gemini(article["title"], article["raw_desc"], category_name, category_emoji)
 
-        # Improve region: prefer detected state-based region if present in title/description
-        detected_region = detect_region_from_text(f"{article['title']} {article.get('raw_desc','')}", article["region"])
+        # Region Intelligence V2: classify from article evidence, never from publisher location.
+        geography = detect_geography_from_text(f"{article['title']} {article.get('raw_desc','')}")
+        detected_region = geography["region"]
 
         # Build the final payload
         doc_payload = {
             "title": article["title"],
             "source": article["source"],
             "region": detected_region,
+            "geographicScope": geography.get("geographicScope", "National"),
+            "states": geography.get("states", []),
+            "cities": geography.get("cities", []),
+            "regionConfidence": geography.get("regionConfidence", "LOW"),
+            "regionEvidence": geography.get("regionEvidence", ""),
             "category": ai_data.get("category", category_emoji),
             "categoryName": ai_data.get("categoryName", category_name),
             "riskLevel": ai_data.get("riskLevel", "MEDIUM"),
