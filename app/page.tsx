@@ -87,6 +87,52 @@ interface DecisionIntelligence {
   confidence: "HIGH" | "MEDIUM" | "LOW" | string;
 }
 
+const hasMeaningfulText = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const normalizeDecisionIntelligence = (value: unknown): DecisionIntelligence | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+  const data = value as Record<string, unknown>;
+  const text = (field: string) => hasMeaningfulText(data[field]) ? data[field].trim() : "";
+  const functionsAffected = Array.isArray(data.functions_affected)
+    ? data.functions_affected.filter(hasMeaningfulText).map((item) => item.trim())
+    : [];
+  const watchIndicators = Array.isArray(data.watch_indicators)
+    ? data.watch_indicators.filter(hasMeaningfulText).map((item) => item.trim())
+    : [];
+  const recommendedActions = Array.isArray(data.recommended_actions)
+    ? data.recommended_actions.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const action = item as Record<string, unknown>;
+        const normalizedAction = {
+          function: hasMeaningfulText(action.function) ? action.function.trim() : "",
+          action: hasMeaningfulText(action.action) ? action.action.trim() : "",
+          horizon: hasMeaningfulText(action.horizon) ? action.horizon.trim() : "",
+        };
+        return Object.values(normalizedAction).some(hasMeaningfulText) ? [normalizedAction] : [];
+      })
+    : [];
+
+  const normalized: DecisionIntelligence = {
+    event_type: text("event_type"),
+    what_changed: text("what_changed"),
+    why_it_matters: text("why_it_matters"),
+    strategic_significance: text("strategic_significance"),
+    functions_affected: functionsAffected,
+    recommended_actions: recommendedActions,
+    watch_indicators: watchIndicators,
+    risk_type: text("risk_type"),
+    risk_rationale: text("risk_rationale"),
+    opportunity: text("opportunity"),
+    confidence: text("confidence"),
+  };
+
+  return Object.values(normalized).some((item) =>
+    Array.isArray(item) ? item.length > 0 : hasMeaningfulText(item)
+  ) ? normalized : undefined;
+};
+
 interface Article {
   id: string;
   title: string;
@@ -316,11 +362,11 @@ export default function Home() {
             createdDate: data.createdDate,
             source: data.source || "Market Source",
             url: data.url || "",
-            actionAdvisory: data.actionAdvisory || "",
+            actionAdvisory: hasMeaningfulText(data.actionAdvisory) ? data.actionAdvisory.trim() : "",
             riskLevel: data.riskLevel || "MEDIUM",
             freshness: data.freshness || undefined,
             relevance: data.relevance || undefined,
-            decision_intelligence: data.decision_intelligence || undefined,
+            decision_intelligence: normalizeDecisionIntelligence(data.decision_intelligence),
             business_advisory: data.business_advisory || undefined,
             language: data.language || "English",
           };
@@ -657,7 +703,7 @@ export default function Home() {
               ✕
             </button>
 
-            <div className="border-b border-slate-800 pb-4 space-y-3 pr-10">
+            <div className="border-b border-slate-800 pb-4 space-y-3 pr-10 min-w-0">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-md border border-emerald-800/50 font-semibold">
                   📍 {selectedArticle.region} Region • Executive Analysis {selectedLanguage !== "English" && `(${selectedLanguage})`}
@@ -669,21 +715,50 @@ export default function Home() {
                 {selectedArticle.title}
               </h3>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1">                
-                <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.timestamp || selectedArticle.createdDate)}</strong></span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400 font-mono pt-1 min-w-0">
+                <span>📅 Published: <strong className="text-slate-200">{formatDate(selectedArticle.freshness?.published_at_iso || selectedArticle.published_date || selectedArticle.timestamp || selectedArticle.createdDate)}</strong></span>
                 <span>📰 Source: <strong className="text-emerald-400">{selectedArticle.source}</strong></span>
-                
+                <span>Category: <strong className="text-slate-200">{selectedArticle.categoryName || selectedArticle.category}</strong></span>
+
                 {selectedArticle.url && (
                   <a
                     href={selectedArticle.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-emerald-400 hover:text-emerald-300 underline font-semibold transition flex items-center gap-1"
+                    className="text-emerald-400 hover:text-emerald-300 underline font-semibold transition inline-flex items-center gap-1 break-all"
                   >
                     🔗 Read Source Article ↗
                   </a>
                 )}
               </div>
+
+              {(selectedArticle.decision_intelligence?.event_type ||
+                selectedArticle.decision_intelligence?.confidence ||
+                selectedArticle.relevance?.relevance_score !== undefined ||
+                selectedArticle.relevance?.business_relevance?.strategic_value_score !== undefined ||
+                selectedArticle.relevance?.business_relevance?.content_type ||
+                selectedArticle.freshness?.age_days !== undefined) && (
+                <div className="flex flex-wrap gap-2 pt-1 text-[10px] font-mono uppercase tracking-wide">
+                  {selectedArticle.decision_intelligence?.event_type && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Event: {selectedArticle.decision_intelligence.event_type}</span>
+                  )}
+                  {selectedArticle.decision_intelligence?.confidence && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Confidence: {selectedArticle.decision_intelligence.confidence}</span>
+                  )}
+                  {selectedArticle.relevance?.relevance_score !== undefined && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Relevance: {selectedArticle.relevance.relevance_score}/100</span>
+                  )}
+                  {selectedArticle.relevance?.business_relevance?.strategic_value_score !== undefined && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Strategic Value: {selectedArticle.relevance.business_relevance.strategic_value_score}/100</span>
+                  )}
+                  {selectedArticle.relevance?.business_relevance?.content_type && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Type: {selectedArticle.relevance.business_relevance.content_type}</span>
+                  )}
+                  {selectedArticle.freshness?.age_days !== undefined && selectedArticle.freshness.age_days !== null && (
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-1 rounded-md">Age: {selectedArticle.freshness.age_days} day{selectedArticle.freshness.age_days === 1 ? "" : "s"}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -699,41 +774,144 @@ export default function Home() {
                 </div>
               )}
 
+              {(selectedArticle.geographicScope ||
+                (Array.isArray(selectedArticle.states) && selectedArticle.states.length > 0) ||
+                (Array.isArray(selectedArticle.cities) && selectedArticle.cities.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-2 bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs">
+                  <span className="font-mono font-bold text-slate-400 uppercase">Geography</span>
+                  {selectedArticle.geographicScope && <span className="text-slate-300">Scope: {selectedArticle.geographicScope}</span>}
+                  {Array.isArray(selectedArticle.states) && selectedArticle.states.length > 0 && <span className="text-slate-300">States: {selectedArticle.states.join(", ")}</span>}
+                  {Array.isArray(selectedArticle.cities) && selectedArticle.cities.length > 0 && <span className="text-slate-300">Cities: {selectedArticle.cities.join(", ")}</span>}
+                </div>
+              )}
+
               {selectedArticle.decision_intelligence && (
-                <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl space-y-3">
+                <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl space-y-4">
                   <h5 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Decision Intelligence</h5>
-                  <div className="space-y-2 text-xs text-slate-300">
-                    <p><strong className="text-slate-100">Event Type:</strong> {selectedArticle.decision_intelligence.event_type || "—"}</p>
-                    <p><strong className="text-slate-100">Confidence:</strong> {selectedArticle.decision_intelligence.confidence || "—"}</p>
-                    <p><strong className="text-slate-100">What Changed:</strong> {selectedArticle.decision_intelligence.what_changed || "—"}</p>
-                    <p><strong className="text-slate-100">Why It Matters:</strong> {selectedArticle.decision_intelligence.why_it_matters || "—"}</p>
-                    {selectedArticle.actionAdvisory && (
-                      <p><strong className="text-slate-100">Action Advisory:</strong> {selectedArticle.actionAdvisory}</p>
-                    )}
-                  </div>
+
+                  {(selectedArticle.decision_intelligence.what_changed ||
+                    selectedArticle.decision_intelligence.why_it_matters ||
+                    selectedArticle.decision_intelligence.strategic_significance) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {selectedArticle.decision_intelligence.what_changed && (
+                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg min-w-0">
+                          <h6 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1.5">What Changed</h6>
+                          <p className="text-xs text-slate-300 leading-relaxed break-words">{selectedArticle.decision_intelligence.what_changed}</p>
+                        </div>
+                      )}
+                      {selectedArticle.decision_intelligence.why_it_matters && (
+                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg min-w-0">
+                          <h6 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1.5">Why It Matters</h6>
+                          <p className="text-xs text-slate-300 leading-relaxed break-words">{selectedArticle.decision_intelligence.why_it_matters}</p>
+                        </div>
+                      )}
+                      {selectedArticle.decision_intelligence.strategic_significance && (
+                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg min-w-0">
+                          <h6 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1.5">Strategic Significance</h6>
+                          <p className="text-xs text-slate-300 leading-relaxed break-words">{selectedArticle.decision_intelligence.strategic_significance}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {Array.isArray(selectedArticle.decision_intelligence.functions_affected) && selectedArticle.decision_intelligence.functions_affected.length > 0 && (
+                    <div className="space-y-2">
+                      <h6 className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Functions Affected</h6>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedArticle.decision_intelligence.functions_affected.map((businessFunction, index) => (
+                          <span key={`${businessFunction}-${index}`} className="bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 px-2.5 py-1 rounded-full text-[11px] font-semibold break-words">
+                            {businessFunction}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {Array.isArray(selectedArticle.decision_intelligence.recommended_actions) && selectedArticle.decision_intelligence.recommended_actions.length > 0 && (
+                    <div className="space-y-2">
+                      <h6 className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider">Recommended Actions</h6>
+                      <div className="space-y-2">
+                        {selectedArticle.decision_intelligence.recommended_actions.map((recommendedAction, index) => (
+                          <div key={`${recommendedAction.function}-${index}`} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 min-w-0">
+                            <div className="flex sm:flex-col items-center sm:items-start gap-2 sm:w-32 shrink-0">
+                              {recommendedAction.function && <strong className="text-xs text-slate-100 break-words"><span className="text-[9px] text-slate-500 font-mono uppercase block">Who</span>{recommendedAction.function}</strong>}
+                              {recommendedAction.horizon && <span className="bg-amber-950/70 text-amber-300 border border-amber-800/60 px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase"><span className="text-amber-500">When:</span> {recommendedAction.horizon}</span>}
+                            </div>
+                            {recommendedAction.action && <p className="text-xs text-slate-300 leading-relaxed break-words min-w-0"><span className="text-[9px] text-slate-500 font-mono font-bold uppercase block">What</span>{recommendedAction.action}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedArticle.decision_intelligence.risk_type || selectedArticle.decision_intelligence.risk_rationale || selectedArticle.decision_intelligence.opportunity) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {(selectedArticle.decision_intelligence.risk_type || selectedArticle.decision_intelligence.risk_rationale) && (
+                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg space-y-2 min-w-0">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h6 className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Risk &amp; Opportunity</h6>
+                            {getRiskBadge(selectedArticle.riskLevel)}
+                          </div>
+                          {selectedArticle.decision_intelligence.risk_type && <p className="text-xs text-slate-300"><strong className="text-slate-100">Type:</strong> {selectedArticle.decision_intelligence.risk_type}</p>}
+                          {selectedArticle.decision_intelligence.risk_rationale && <p className="text-xs text-slate-400 leading-relaxed break-words">{selectedArticle.decision_intelligence.risk_rationale}</p>}
+                        </div>
+                      )}
+                      {selectedArticle.decision_intelligence.opportunity && (
+                        <div className="bg-emerald-950/30 border border-emerald-900/60 p-3 rounded-lg min-w-0">
+                          <h6 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider mb-2">Opportunity</h6>
+                          <p className="text-xs text-slate-300 leading-relaxed break-words">{selectedArticle.decision_intelligence.opportunity}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {Array.isArray(selectedArticle.decision_intelligence.watch_indicators) && selectedArticle.decision_intelligence.watch_indicators.length > 0 && (
+                    <div className="space-y-2">
+                      <h6 className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Watch Indicators</h6>
+                      <ul className="space-y-1.5 text-xs text-slate-300">
+                        {selectedArticle.decision_intelligence.watch_indicators.map((indicator, index) => (
+                          <li key={`${indicator}-${index}`} className="flex items-start gap-2 break-words">
+                            <span className="text-emerald-400 mt-0.5 shrink-0">•</span>
+                            <span>{indicator}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedArticle.actionAdvisory && (
+                <div className="bg-amber-950/30 border border-amber-800/60 p-4 rounded-xl">
+                  <h5 className="text-[10px] font-bold font-mono text-amber-400 uppercase tracking-wider mb-2">Executive Action</h5>
+                  <p className="text-sm text-slate-100 leading-relaxed font-semibold break-words">{selectedArticle.actionAdvisory}</p>
                 </div>
               )}
 
               {selectedArticle.business_advisory && (
+                hasMeaningfulText(selectedArticle.business_advisory.qa_compliance) ||
+                hasMeaningfulText(selectedArticle.business_advisory.supply_chain) ||
+                hasMeaningfulText(selectedArticle.business_advisory.export_strategy)
+              ) && (
                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
-                  <h5 className="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">🏢 Action Advisory for Business Stakeholders</h5>
+                  <h5 className="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Action Advisory for Business Stakeholders</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                    {selectedArticle.business_advisory.qa_compliance && (
+                    {hasMeaningfulText(selectedArticle.business_advisory.qa_compliance) && (
                       <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
-                        <strong className="text-slate-300 font-semibold block">🔬 QA & Compliance:</strong>
-                        <p className="text-slate-400">{selectedArticle.business_advisory.qa_compliance}</p>
+                        <strong className="text-slate-300 font-semibold block uppercase">QA & Compliance</strong>
+                        <p className="text-slate-400 leading-relaxed break-words">{selectedArticle.business_advisory.qa_compliance}</p>
                       </div>
                     )}
-                    {selectedArticle.business_advisory.supply_chain && (
+                    {hasMeaningfulText(selectedArticle.business_advisory.supply_chain) && (
                       <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
-                        <strong className="text-slate-300 font-semibold block">🚚 Supply Chain:</strong>
-                        <p className="text-slate-400">{selectedArticle.business_advisory.supply_chain}</p>
+                        <strong className="text-slate-300 font-semibold block uppercase">Supply Chain</strong>
+                        <p className="text-slate-400 leading-relaxed break-words">{selectedArticle.business_advisory.supply_chain}</p>
                       </div>
                     )}
-                    {selectedArticle.business_advisory.export_strategy && (
+                    {hasMeaningfulText(selectedArticle.business_advisory.export_strategy) && (
                       <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
-                        <strong className="text-slate-300 font-semibold block">🚢 Export & Business:</strong>
-                        <p className="text-slate-400">{selectedArticle.business_advisory.export_strategy}</p>
+                        <strong className="text-slate-300 font-semibold block uppercase">Export &amp; Business</strong>
+                        <p className="text-slate-400 leading-relaxed break-words">{selectedArticle.business_advisory.export_strategy}</p>
                       </div>
                     )}
                   </div>
