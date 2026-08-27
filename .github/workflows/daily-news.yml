@@ -26,7 +26,7 @@ env:
 jobs:
   scrape-news:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     name: FMCG News Scraper
     
     steps:
@@ -80,10 +80,10 @@ jobs:
           echo "📝 Log file: ${LOG_FILE}"
 
           # Relevance gating can evaluate many candidates before accepting a bulletin.
-          # Allow up to 25 minutes while preserving the job-level 30-minute safety limit.
+          # Allow up to 40 minutes while preserving the job-level 45-minute safety limit.
           set +e
           set -o pipefail
-          timeout 1500 python scraper.py 2>&1 | tee "${LOG_FILE}"
+          timeout 2400 python scraper.py 2>&1 | tee "${LOG_FILE}"
           SCRAPER_EXIT_CODE=${PIPESTATUS[0]}
           set -e
           
@@ -94,7 +94,7 @@ jobs:
           echo "log_file=${LOG_FILE}" >> $GITHUB_OUTPUT
           
           if [ $SCRAPER_EXIT_CODE -eq 124 ]; then
-            echo "⏱️ ERROR: Scraper timed out after 25 minutes"
+            echo "⏱️ ERROR: Scraper timed out after 40 minutes"
             exit 1
           elif [ $SCRAPER_EXIT_CODE -ne 0 ]; then
             echo "❌ Scraper failed with exit code: $SCRAPER_EXIT_CODE"
